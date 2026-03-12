@@ -58,19 +58,27 @@ class BotController extends Controller
         ]);
     }
 
-    public function getQrcode($instanceName)
+    public function getQrcode(Request $request, $instanceName)
     {
-        $instance = BotInstance::where('instance_name', $instanceName)->first();
+        $instance = BotInstance::where('instance_name', $instanceName);
+        
+        // Verifica auth via token para tenant isolamento api
+        if ($request->has('tenant_id')) {
+            $instance->withoutGlobalScope('tenant')->where('tenant_id', $request->tenant_id);
+        }
+
+        $instance = $instance->first();
 
         if (!$instance) {
             return response()->json([
-                'success' => true,
+                'success' => false,
+                'message' => 'Instance not found',
                 'data' => [
                     'qrcode' => null,
                     'status' => 'disconnected',
                     'generated_at' => null,
                 ],
-            ]);
+            ], 404);
         }
 
         return response()->json([
@@ -118,6 +126,7 @@ class BotController extends Controller
             $response = Http::timeout(30)->post("{$botUrl}/send-message", [
                 'contact' => $validated['contact'],
                 'message' => $validated['message'],
+                'instance_name' => $validated['instance_name'],
             ]);
             if ($response->successful()) {
                 return response()->json(['success' => true, 'message' => 'Mensagem enviada com sucesso', 'data' => $response->json()]);
@@ -134,7 +143,7 @@ class BotController extends Controller
             ->where('contact', $validated['contact'])
             ->first();
         if ($conversation) {
-            \App\Models\Message::create([
+            $msg = \App\Models\Message::create([
                 'conversation_id' => $conversation->id,
                 'instance_name' => $validated['instance_name'],
                 'message_id' => 'ev_' . uniqid(),
@@ -145,6 +154,63 @@ class BotController extends Controller
                 'timestamp' => now(),
             ]);
             $conversation->update(['last_message_at' => now()]);
+
+            // Auditar disparo
+            if (auth()->check()) {
+                \App\Models\ActionLog::create([
+                     'action_type' => 'message_sent',
+                     'entity_type' => 'Conversation',
+                     'entity_id' => $conversation->id,
+                     'description' => 'Agente enviou uma mensagem',
+                     'meta_data' => ['message_id' => $msg->id],
+                     'user_id' => auth()->id(),
+                     'tenant_id' => auth()->user()->tenant_id,
+                ]);
+            }
+        }
+    }
+
+    public function startInstance(Request $request)
+    {
+        $validated = $request->validate([
+            'instance_name' => 'required|string',
+        ]);
+
+        $tenantId = $request->tenant_id ?? auth()->user()->tenant_id;
+        if (!$tenantId) {
+             return response()->json(['success' => false, 'message' => 'Tenant ID ausente'], 400);
+        }
+
+        $botUrl = config('services.bot.url', env('BOT_URL', 'http://localhost:3001'));
+        
+        try {
+            $response = Http::timeout(30)->post("{$botUrl}/instances/create", [
+                'instance_name' => $validated['instance_name'],
+                'tenant_id' => $tenantId
+            ]);
+            
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Erro ao conectar no BotManager', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function stopInstance(Request $request)
+    {
+        $validated = $request->validate([
+            'instance_name' => 'required|string',
+        ]);
+
+        $botUrl = config('services.bot.url', env('BOT_URL', 'http://localhost:3001'));
+        
+        try {
+            $response = Http::timeout(30)->send('DELETE', "{$botUrl}/instances/destroy", [
+                 'json' => ['instance_name' => $validated['instance_name']]
+            ]);
+            
+            return response()->json($response->json(), $response->status());
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Erro ao conectar no BotManager', 'error' => $e->getMessage()], 500);
         }
     }
 }

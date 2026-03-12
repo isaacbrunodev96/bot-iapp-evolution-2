@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nexxivo-app</title>
+    <script type="module" crossorigin src="/assets/index-CEJTNH2Q.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BfOifzmf.css">
+  </head>
+  <body>
+    <div id="root"></div>
+      <!-- CRM Boards -->
+      <div id="kanban-board"></div>
+      <div id="flows-board"></div>
+      <div id="instances-board"></div>
+      <div id="tenants-board"></div>
+
+      <!-- CRM AI, Voice, Remarketing Integration -->
+      <div id="crm-tools">
+        <h3>Ferramentas IA, Voz, Remarketing</h3>
+        <input id="ai-input" placeholder="Mensagem para IA" />
+        <button onclick="generateAIResponse(document.getElementById('ai-input').value).then(resp => alert('IA: '+resp))">Gerar IA</button>
+        <input id="voice-input" placeholder="Texto para voz" />
+        <button onclick="generateVoice(document.getElementById('voice-input').value).then(audio => {if(audio){let a=new Audio(audio);a.play();}})">Gerar Voz</button>
+        <input id="remarketing-input" placeholder="Mensagem remarketing" />
+        <button onclick="sendRemarketing(document.getElementById('remarketing-input').value,'all').then(success => alert(success?'Enviado':'Falhou'))">Enviar Remarketing</button>
+      </div>
+
+      <!-- Scripts CRM -->
+      <script src="/assets/crm-kanban.js"></script>
+      <script src="/assets/crm-flows.js"></script>
+      <script src="/assets/crm-instances.js"></script>
+      <script src="/assets/crm-tenants.js"></script>
+      <script src="/assets/crm-ai.js"></script>
+      <script src="/assets/crm-voice.js"></script>
+      <script src="/assets/crm-remarketing.js"></script>
+  </body>
+</html>

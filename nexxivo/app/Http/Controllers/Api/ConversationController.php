@@ -12,20 +12,22 @@ class ConversationController extends Controller
 {
     public function index(Request $request)
     {
+        $tenantId = auth()->user()->tenant_id ?? $request->get('tenant_id');
         $instanceName = $request->query('instance_name');
         $contact = $request->query('contact');
         $isArchived = $request->query('is_archived', false);
 
         $query = Conversation::with('latestMessage')
+            ->where('tenant_id', $tenantId)
             ->where('is_archived', $isArchived)
             ->orderBy('last_message_at', 'desc');
-        
+
         // Não filtrar por is_blocked aqui - deixar o bot verificar individualmente
 
         if ($instanceName) {
             $query->where('instance_name', $instanceName);
         }
-        
+
         if ($contact) {
             $query->where('contact', $contact);
         }

@@ -33,14 +33,26 @@ class ProcessIncomingMessageJob implements ShouldQueue
         public int $messageId
     ) {}
 
-    public function handle(EvolutionApiService $evolution, AIService $aiService, ElevenLabsService $elevenLabs): void
+    public function handle(EvolutionApiService $evolution): void
     {
         Log::info('ProcessIncomingMessageJob iniciado', [
             'instance' => $this->instanceName,
             'contact' => $this->contact,
             'text_preview' => substr($this->messageText, 0, 80),
         ]);
+
+        $instance = \App\Models\BotInstance::where('instance_name', $this->instanceName)->first();
+        if (!$instance) {
+             Log::error('BotInstance não encontrada para instanciar a IA', ['instance' => $this->instanceName]);
+             return;
+        }
+        $tenantId = $instance->tenant_id;
+
+        $aiService = new AIService($tenantId);
+        $elevenLabs = new ElevenLabsService($tenantId);
+
         $flows = Flow::where('is_active', true)
+            ->where('tenant_id', $tenantId)
             ->where(function ($q) {
                 $q->where('instance_name', $this->instanceName)->orWhereNull('instance_name');
             })

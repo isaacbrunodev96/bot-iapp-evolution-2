@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 
 class MessageController extends Controller
 {
-    public function store(Request $request)
+    public function store(Request $request, \App\Services\TicketRoutingService $routingService)
     {
         $validated = $request->validate([
             'instance_name' => 'required|string',
@@ -44,12 +44,14 @@ class MessageController extends Controller
 
         $direction = $validated['direction'] ?? 'incoming';
         $contact = $direction === 'incoming' ? $validated['from'] : ($validated['to'] ?? $validated['from']);
+        $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
 
         // Buscar ou criar conversa
         $conversation = Conversation::firstOrCreate(
             [
                 'instance_name' => $validated['instance_name'],
                 'contact' => $contact,
+                'tenant_id' => $tenantId,
             ],
             [
                 'last_message_at' => now(),
@@ -70,6 +72,7 @@ class MessageController extends Controller
             'direction' => $direction,
             'raw_data' => $validated['raw_message'] ?? null,
             'timestamp' => \Carbon\Carbon::createFromTimestamp($validated['timestamp']),
+            'tenant_id' => $tenantId,
         ]);
 
         // LÓGICA DE MOVIMENTAÇÃO AUTOMÁTICA NO KANBAN
@@ -93,6 +96,11 @@ class MessageController extends Controller
                     ]);
                 }
             }
+
+            // Distribuir via TicketRouting caso recém criada ou devolvida e PENDENTE
+            if ($conversation->status === 'pending') {
+                 $routingService->routeConversation($conversation);
+            }
         }
 
         Log::info('Mensagem recebida', [
@@ -110,10 +118,12 @@ class MessageController extends Controller
 
     public function index(Request $request)
     {
+        $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
         $conversationId = $request->query('conversation_id');
         $afterId = $request->query('after_id');
 
         $query = Message::with('conversation')
+            ->where('tenant_id', $tenantId)
             ->orderBy('created_at', 'asc');
 
         if ($conversationId) {

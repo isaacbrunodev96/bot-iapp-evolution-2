@@ -9,12 +9,6 @@ use Illuminate\Support\Facades\Log;
 
 class ElevenLabsController extends Controller
 {
-    private $elevenLabsService;
-
-    public function __construct(ElevenLabsService $elevenLabsService)
-    {
-        $this->elevenLabsService = $elevenLabsService;
-    }
 
     /**
      * Gera áudio a partir de texto
@@ -28,7 +22,10 @@ class ElevenLabsController extends Controller
         ]);
 
         try {
-            $result = $this->elevenLabsService->textToSpeech(
+            $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
+            $elevenLabsService = new ElevenLabsService($tenantId);
+
+            $result = $elevenLabsService->textToSpeech(
                 $validated['text'],
                 $validated['voice_id'] ?? null,
                 $validated['model'] ?? null
@@ -72,7 +69,10 @@ class ElevenLabsController extends Controller
         ]);
 
         try {
-            $result = $this->elevenLabsService->speechToText(
+            $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
+            $elevenLabsService = new ElevenLabsService($tenantId);
+
+            $result = $elevenLabsService->speechToText(
                 $validated['audio'],
                 $validated['model'] ?? null,
                 $validated['mimetype'] ?? null,
@@ -101,10 +101,13 @@ class ElevenLabsController extends Controller
     /**
      * Lista todas as vozes disponíveis
      */
-    public function getVoices()
+    public function getVoices(Request $request)
     {
         try {
-            $voices = $this->elevenLabsService->getVoices();
+            $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
+            $elevenLabsService = new ElevenLabsService($tenantId);
+
+            $voices = $elevenLabsService->getVoices();
 
             return response()->json([
                 'success' => true,

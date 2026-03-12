@@ -4,9 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Traits\BelongsToTenant;
 
 class Flow extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'name',
         'description',
@@ -15,6 +18,7 @@ class Flow extends Model
         'actions',
         'is_active',
         'priority',
+        'tenant_id',
     ];
 
     protected $casts = [
@@ -28,4 +32,3 @@ class Flow extends Model
         return $this->hasMany(FlowExecution::class);
     }
 }
-

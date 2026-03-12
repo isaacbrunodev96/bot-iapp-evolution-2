@@ -1,330 +1,413 @@
 @extends('layouts.app')
 
-@section('title', 'CRM Kanban')
+@section('title', 'CRM Kanban - Nexxivo')
 
 @section('content')
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="mb-6 flex items-center justify-between">
-        <h1 class="text-3xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-            <i class="fas fa-columns mr-3"></i>CRM Kanban
-        </h1>
-        <div class="flex gap-3">
-            <a href="/chat" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition">
-                <i class="fas fa-comments mr-2"></i>Ver Conversas
-            </a>
-            <button onclick="openRemarketingModal()" class="btn-primary text-white px-6 py-2 rounded-lg font-semibold">
-                <i class="fas fa-bullhorn mr-2"></i>Remarketing
+<div class="p-6 md:p-10 flex flex-col h-full space-y-6 bg-[#0B0B0F] w-full min-w-0">
+    
+    <!-- Cabeçalho Superior -->
+    <div class="flex flex-col md:flex-row items-center justify-between gap-6 shrink-0">
+        <div class="flex flex-col gap-1">
+            <div class="flex items-center gap-3">
+                <h1 class="text-3xl font-bold text-white tracking-tight">CRM Kanban</h1>
+                
+                <!-- Funnel Selector -->
+                @if(count($funnels) > 1)
+                <div class="relative group">
+                    <button class="bg-[#16161D] border border-[#2A2A35] hover:border-fuchsia-500/50 text-gray-400 px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
+                        {{ $currentFunnel->name }} 
+                        <i class="fas fa-chevron-down text-[8px] text-gray-600 group-hover:text-fuchsia-400"></i>
+                    </button>
+                    <!-- Dropdown Content -->
+                    <div class="absolute left-0 top-full mt-2 w-56 bg-[#16161D] border border-[#2A2A35] rounded-2xl shadow-2xl shadow-black/80 hidden group-hover:block transition-all z-50 overflow-hidden backdrop-blur-md">
+                        @foreach($funnels as $f)
+                        <a href="?funnel_id={{ $f->id }}" class="flex items-center justify-between px-4 py-3 text-[11px] font-black uppercase tracking-widest {{ $f->id === $currentFunnel->id ? 'text-fuchsia-400 bg-fuchsia-500/5' : 'text-gray-500 hover:bg-white/5 hover:text-white' }} transition">
+                            {{ $f->name }}
+                            @if($f->id === $currentFunnel->id)
+                                <i class="fas fa-check text-[10px]"></i>
+                            @endif
+                        </a>
+                        @endforeach
+                    </div>
+                </div>
+                @else
+                <div class="px-3 py-1 bg-[#16161D] border border-[#2A2A35] rounded-lg">
+                    <span class="text-[10px] font-black text-fuchsia-500 uppercase tracking-[0.2em]">{{ $currentFunnel->name }}</span>
+                </div>
+                @endif
+            </div>
+            <p class="text-gray-600 text-[11px] font-bold uppercase tracking-wider">Gerencie as etapas de negociação do seu pipeline.</p>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <!-- Barra de Ferramentas: Filtros e Busca -->
+            <div class="flex items-center bg-[#16161D] border border-[#2A2A35] rounded-xl p-1 shadow-inner">
+                <button class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition">
+                    <i class="fas fa-filter text-xs text-fuchsia-500/70"></i> Filtrar
+                </button>
+                <div class="w-px h-4 bg-[#2A2A35] mx-1"></div>
+                <div class="flex items-center px-3 gap-2 group focus-within:ring-1 focus-within:ring-fuchsia-500/50 rounded-lg transition-all">
+                    <i class="fas fa-search text-xs text-gray-600 group-focus-within:text-fuchsia-500 transition"></i>
+                    <input type="text" id="kanban-search" placeholder="Buscar por nome ou telefone..." class="bg-transparent border-none text-sm text-white focus:ring-0 w-32 md:w-64 placeholder-gray-600">
+                </div>
+            </div>
+
+            <!-- Botão Notificação -->
+            <button class="relative w-10 h-10 flex items-center justify-center bg-[#16161D] border border-[#2A2A35] text-gray-400 hover:text-white rounded-xl transition hover:border-fuchsia-500/30 group">
+                <i class="far fa-bell"></i>
+                <span class="absolute top-2.5 right-2.5 w-2 h-2 bg-fuchsia-500 rounded-full border-2 border-[#16161D] group-hover:scale-110 transition"></span>
+            </button>
+
+            <!-- Botão Nova Coluna -->
+            <button onclick="document.getElementById('newStageModal').classList.remove('hidden')" class="bg-gradient-to-r from-fuchsia-600 to-pink-600 hover:from-fuchsia-500 hover:to-pink-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-fuchsia-600/20 transition-all transform hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2.5">
+                <i class="fas fa-plus text-xs mb-[1px]"></i>
+                <span class="leading-none">Nova Coluna</span>
             </button>
         </div>
     </div>
 
     <!-- Kanban Board -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        @foreach($statuses as $status)
-        <div class="card-modern p-4">
-            <div class="mb-4">
-                <h2 class="text-lg font-bold text-gray-800 mb-2">
-                    @if($status === 'novo')
-                        <i class="fas fa-circle text-blue-500 mr-2"></i>Novo
-                    @elseif($status === 'em_atendimento')
-                        <i class="fas fa-circle text-yellow-500 mr-2"></i>Em Atendimento
-                    @elseif($status === 'aguardando')
-                        <i class="fas fa-circle text-orange-500 mr-2"></i>Aguardando
-                    @else
-                        <i class="fas fa-circle text-green-500 mr-2"></i>Fechado
-                    @endif
-                </h2>
-                <span class="text-sm text-gray-500">{{ $conversationsByStatus[$status]->count() }} contatos</span>
-            </div>
+    <div class="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar pb-6 min-h-0">
+        <div id="kanban-board" class="flex gap-8 h-full items-start px-2" style="width: max-content;">
             
-            <div class="space-y-3 max-h-[600px] overflow-y-auto" id="kanban-{{ $status }}" ondrop="drop(event)" ondragover="allowDrop(event)">
-                @foreach($conversationsByStatus[$status] as $conversation)
-                <div class="bg-white border-2 border-gray-200 rounded-lg p-4 cursor-move hover:border-purple-400 transition" 
-                     draggable="true" 
-                     ondragstart="drag(event)" 
-                     data-conversation-id="{{ $conversation->id }}"
-                     data-status="{{ $status }}">
-                    <div class="flex items-start justify-between mb-2">
-                        <div class="flex items-center">
-                            <div class="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 flex items-center justify-center text-white font-bold mr-2">
-                                {{ strtoupper(substr($conversation->contact_name ?? $conversation->contact, 0, 1)) }}
+            @foreach($stages as $stage)
+            <!-- Coluna -->
+            <div class="kanban-column w-[340px] flex flex-col h-full shrink-0 group/col" data-id="{{ $stage->id }}">
+                
+                <!-- Header da Coluna -->
+                <div class="flex items-center justify-between mb-5 px-1 column-drag-handle cursor-grab active:cursor-grabbing">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor]" style="color: {{ $stage->color }}; background-color: {{ $stage->color }}"></div>
+                        <h2 class="text-sm font-black text-gray-200 uppercase tracking-[0.15em] flex items-center gap-2">
+                            {{ $stage->name }}
+                            <span class="bg-white/5 border border-white/5 text-gray-500 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                {{ $stage->conversations->count() }}
+                            </span>
+                        </h2>
+                    </div>
+                    
+                    <div class="relative opacity-0 group-hover/col:opacity-100 transition-opacity">
+                        <button onclick="toggleDropdown('dropdown-{{ $stage->id }}')" class="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-white hover:bg-white/5 rounded-lg transition">
+                            <i class="fas fa-ellipsis-v text-xs"></i>
+                        </button>
+                        <div id="dropdown-{{ $stage->id }}" class="hidden absolute right-0 top-full mt-1 w-40 bg-[#1A1A24] border border-[#2A2A35] rounded-xl shadow-2xl z-50 overflow-hidden">
+                            <form action="{{ route('crm.stages.destroy', $stage->id) }}" method="POST" onsubmit="return confirm('Excluir esta coluna?');">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-500/10 transition">
+                                    <i class="fas fa-trash-alt mr-2"></i> Excluir Etapa
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Cards Container -->
+                <div class="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-2 kanban-cards-container min-h-[100px]" data-stage-id="{{ $stage->id }}">
+                    
+                    @foreach($stage->conversations as $conversation)
+                    <!-- Ticket Card -->
+                    <div class="kanban-card bg-[#16161D] border border-[#2A2A35] hover:border-fuchsia-500/30 rounded-[22px] p-5 cursor-grab active:cursor-grabbing transition-all duration-300 group/card shadow-lg shadow-black/5 hover:shadow-fuchsia-500/5 relative overflow-hidden" data-id="{{ $conversation->id }}">
+                        
+                        <!-- Glow de hover sutil -->
+                        <div class="absolute inset-0 bg-gradient-to-br from-fuchsia-500/[0.02] to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity pointer-events-none"></div>
+
+                        <div class="flex items-start gap-4 mb-5">
+                            <!-- Avatar com iniciais -->
+                            <div class="w-12 h-12 rounded-2xl bg-[#0B0B0F] border border-[#2A2A35] flex items-center justify-center text-gray-400 shrink-0 shadow-inner group-hover/card:border-fuchsia-500/20 transition-colors">
+                                <i class="far fa-user text-xl"></i>
                             </div>
-                            <div>
-                                <h3 class="font-bold text-gray-800 text-sm">
-                                    {{ $conversation->contact_name ?? $conversation->contact }}
-                                </h3>
-                                <p class="text-xs text-gray-500">{{ $conversation->contact }}</p>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between gap-2 mb-0.5">
+                                    <h3 class="font-bold text-gray-100 text-[15px] truncate group-hover/card:text-white transition-colors">
+                                        {{ $conversation->contact_name ?? $conversation->contact }}
+                                    </h3>
+                                    <!-- Bolinha de Status Online (Mock) -->
+                                    <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)] shrink-0"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 font-medium truncate mb-2">{{ $conversation->contact }}</p>
+                                
+                                <!-- Tags / Labels -->
+                                @if($conversation->label)
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-widest uppercase bg-fuchsia-500/10 text-fuchsia-500 border border-fuchsia-500/20">
+                                    {{ $conversation->label }}
+                                </span>
+                                @endif
+                            </div>
+                        </div>
+                        
+                        <!-- Footer do Card -->
+                        <div class="flex items-center justify-between pt-3 border-t border-[#2A2A35]/50">
+                            <div class="flex items-center gap-1.5 text-gray-600 group-hover/card:text-gray-400 transition-colors">
+                                <i class="far fa-clock text-[10px]"></i>
+                                <span class="text-[10px] font-bold uppercase tracking-tighter">
+                                    {{ $conversation->last_message_at ? $conversation->last_message_at->diffForHumans(null, true, true) : 'Ativo' }}
+                                </span>
+                            </div>
+                            
+                            <div class="flex items-center gap-2">
+                                <a href="{{ route('chat.show', $conversation->id) }}" class="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-[#2A2A35]/30 hover:bg-fuchsia-600 text-gray-300 hover:text-white text-[11px] font-black uppercase tracking-wider transition-all border border-transparent hover:border-fuchsia-400/30">
+                                    <i class="far fa-comment-dots text-xs"></i> Chat
+                                </a>
+                                <button class="w-8 h-8 flex items-center justify-center bg-[#2A2A35]/30 hover:bg-white/5 rounded-xl text-gray-500 hover:text-white transition border border-transparent hover:border-[#2A2A35]">
+                                    <i class="fas fa-phone-alt text-[10px]"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
-                    @if($conversation->latestMessage)
-                    <p class="text-xs text-gray-600 mt-2 truncate">
-                        <i class="fas fa-comment-dots mr-1 text-purple-500"></i>
-                        {{ \Illuminate\Support\Str::limit($conversation->latestMessage->message, 50) }}
-                    </p>
-                    @endif
-                    @if($conversation->last_message_at)
-                    <p class="text-xs text-gray-400 mt-2">
-                        <i class="fas fa-clock mr-1"></i>{{ $conversation->last_message_at->diffForHumans() }}
-                    </p>
-                    @endif
-                    <a href="{{ route('chat.show', $conversation->id) }}" class="text-xs text-purple-600 hover:text-purple-800 mt-2 inline-block">
-                        <i class="fas fa-eye mr-1"></i>Ver conversa
-                    </a>
+                    @endforeach
+
+                    <!-- Adicionar Lead Button -->
+                    <button onclick="openAddLeadModal('{{ $stage->id }}')" class="w-full py-4 rounded-[22px] border-2 border-dashed border-[#1A1A24] text-gray-600 hover:text-fuchsia-500 hover:bg-fuchsia-500/5 hover:border-fuchsia-500/20 transition-all flex items-center justify-center gap-2.5 font-bold text-xs uppercase tracking-widest">
+                        <i class="fas fa-plus-circle mb-[1px]"></i>
+                        <span class="leading-none">Adicionar lead</span>
+                    </button>
+                    
                 </div>
-                @endforeach
-                
-                @if($conversationsByStatus[$status]->count() === 0)
-                <div class="text-center py-8 text-gray-400">
-                    <i class="fas fa-inbox text-3xl mb-2"></i>
-                    <p class="text-sm">Nenhum contato</p>
-                </div>
-                @endif
             </div>
+            @endforeach
+
+            <!-- Nova Coluna Placeholder -->
+            <div class="w-[340px] shrink-0 h-full">
+                <button onclick="document.getElementById('newStageModal').classList.remove('hidden')" class="w-full h-36 border-2 border-dashed border-[#1A1A24] hover:border-fuchsia-500/30 bg-[#16161D]/30 hover:bg-[#1A1A24]/50 rounded-[25px] flex flex-col items-center justify-center transition-all group shrink-0 py-6">
+                    <div class="w-12 h-12 rounded-full bg-[#1A1A24] group-hover:bg-fuchsia-600 flex items-center justify-center text-gray-600 group-hover:text-white transition-all mb-3 shadow-inner">
+                        <i class="fas fa-plus text-base"></i>
+                    </div>
+                    <span class="text-[11px] font-black text-gray-500 uppercase tracking-widest group-hover:text-fuchsia-400 leading-none">Nova Coluna</span>
+                </button>
+            </div>
+
         </div>
-        @endforeach
     </div>
 </div>
 
-<!-- Modal de Remarketing -->
-<div id="remarketingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-    <div class="card-modern p-6 max-w-2xl w-full mx-4">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-2xl font-bold text-gray-800">
-                <i class="fas fa-bullhorn mr-2 text-purple-600"></i>Remarketing
-            </h2>
-            <button onclick="closeRemarketingModal()" class="text-gray-500 hover:text-gray-700">
-                <i class="fas fa-times text-xl"></i>
+<!-- Modals -->
+
+<!-- Modal: Novo Lead -->
+<div id="addLeadModal" class="fixed inset-0 bg-black/90 backdrop-blur-md hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-[#16161D] border border-[#2A2A35] rounded-3xl p-10 max-w-md w-full shadow-2xl shadow-black relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-600 to-teal-600"></div>
+        
+        <div class="flex items-center justify-between mb-8">
+            <h2 class="text-2xl font-black text-white uppercase tracking-tighter">Adicionar Novo Lead</h2>
+            <button onclick="document.getElementById('addLeadModal').classList.add('hidden')" class="text-gray-500 hover:text-white transition w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/5">
+                <i class="fas fa-times text-lg"></i>
             </button>
         </div>
         
-        <form id="remarketingForm" onsubmit="sendRemarketing(event)">
-            <div class="mb-4">
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Mensagem</label>
-                <textarea id="remarketingMessage" rows="4" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-purple-500 focus:outline-none" placeholder="Digite a mensagem que será enviada..." required></textarea>
+        <form action="{{ route('crm.leads.store') }}" method="POST" class="space-y-6">
+            @csrf
+            <input type="hidden" name="funnel_stage_id" id="modal_stage_id">
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Nome do Contato</label>
+                <input type="text" name="contact_name" required placeholder="Ex: João da Silva" class="w-full bg-[#0B0B0F] border border-[#2A2A35] rounded-2xl text-white px-5 py-4 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all placeholder-gray-700">
             </div>
             
-            <div class="mb-4">
-                <label class="flex items-center cursor-pointer">
-                    <input type="checkbox" id="sendAsAudio" name="send_as_audio" class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
-                    <span class="ml-2 text-sm font-semibold text-gray-700">
-                        <i class="fas fa-volume-up mr-1"></i>Enviar como áudio
-                    </span>
-                </label>
-                <p class="text-xs text-gray-500 mt-1 ml-6">A mensagem será convertida em áudio usando ElevenLabs</p>
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">WhatsApp / Telefone</label>
+                <input type="text" name="contact" required placeholder="Ex: 5511999999999" class="w-full bg-[#0B0B0F] border border-[#2A2A35] rounded-2xl text-white px-5 py-4 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 outline-none transition-all placeholder-gray-700">
             </div>
             
-            <div id="voiceSelection" class="mb-4 hidden">
-                <label class="block text-sm font-semibold text-gray-700 mb-2">
-                    <i class="fas fa-microphone mr-1"></i>Voz
-                </label>
-                <div class="flex gap-2">
-                    <select id="remarketingVoiceId" class="flex-1 border-2 border-gray-300 rounded-lg p-3 focus:border-purple-500 focus:outline-none">
-                        <option value="">Carregando vozes...</option>
-                    </select>
-                    <button type="button" onclick="loadVoices()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300" title="Recarregar vozes">
-                        <i class="fas fa-sync-alt"></i>
-                    </button>
-                </div>
-                <p class="text-xs text-gray-500 mt-1">Selecione a voz que será usada para o áudio</p>
-            </div>
-            
-            <div class="mb-4">
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Enviar para</label>
-                <select id="remarketingTarget" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-purple-500 focus:outline-none" required>
-                    <option value="all">Todos os contatos</option>
-                    <option value="novo">Novo</option>
-                    <option value="em_atendimento">Em Atendimento</option>
-                    <option value="aguardando">Aguardando</option>
-                    <option value="fechado">Fechado</option>
-                    <option value="selected">Contatos Selecionados</option>
-                </select>
-            </div>
-            
-            <div id="selectedContacts" class="mb-4 hidden">
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Selecionar Contatos</label>
-                <div class="max-h-48 overflow-y-auto border-2 border-gray-300 rounded-lg p-3">
-                    @foreach($statuses as $status)
-                        @foreach($conversationsByStatus[$status] as $conversation)
-                        <label class="flex items-center mb-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                            <input type="checkbox" name="selected_contacts[]" value="{{ $conversation->contact }}" class="mr-2">
-                            <span class="text-sm text-gray-700">{{ $conversation->contact_name ?? $conversation->contact }}</span>
-                        </label>
-                        @endforeach
-                    @endforeach
-                </div>
-            </div>
-            
-            <div class="flex gap-3">
-                <button type="submit" class="btn-primary text-white px-6 py-2 rounded-lg font-semibold flex-1">
-                    <i class="fas fa-paper-plane mr-2"></i>Enviar Mensagens
-                </button>
-                <button type="button" onclick="closeRemarketingModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">
-                    Cancelar
-                </button>
-            </div>
+            <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl shadow-emerald-600/20 transition-all hover:-translate-y-1 active:scale-95">
+                Salvar Lead
+            </button>
         </form>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<!-- Modal: Nova Coluna -->
+<div id="newStageModal" class="fixed inset-0 bg-black/90 backdrop-blur-md hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-[#16161D] border border-[#2A2A35] rounded-3xl p-10 max-w-md w-full shadow-2xl shadow-black relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-fuchsia-600 to-pink-600"></div>
+        
+        <div class="flex items-center justify-between mb-8">
+            <h2 class="text-2xl font-black text-white uppercase tracking-tighter">Criar Nova Etapa</h2>
+            <button onclick="document.getElementById('newStageModal').classList.add('hidden')" class="text-gray-500 hover:text-white transition w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/5">
+                <i class="fas fa-times text-lg"></i>
+            </button>
+        </div>
+        
+        <form action="{{ route('crm.stages.store', $currentFunnel->id) }}" method="POST" class="space-y-6">
+            @csrf
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Nome da Etapa</label>
+                <input type="text" name="name" required placeholder="Ex: Negociação Estratégica" class="w-full bg-[#0B0B0F] border border-[#2A2A35] rounded-2xl text-white px-5 py-4 focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500/50 outline-none transition-all placeholder-gray-700">
+            </div>
+            
+            <div>
+                <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">Cor de Destaque</label>
+                <div class="flex items-center gap-6 p-4 bg-[#0B0B0F] rounded-2xl border border-[#2A2A35]">
+                    <div class="relative group cursor-pointer">
+                        <input type="color" name="color" id="stageColorPicker" value="#A855F7" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                        <div id="colorPreview" class="w-16 h-16 rounded-2xl border-2 border-white/20 shadow-2xl transition-all scale-100 group-hover:scale-105 active:scale-95" style="background-color: #A855F7"></div>
+                        <div class="absolute -bottom-1 -right-1 bg-white text-black w-6 h-6 rounded-lg flex items-center justify-center shadow-lg border-2 border-[#0B0B0F]">
+                            <i class="fas fa-eye-dropper text-[10px]"></i>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <span id="colorHex" class="text-sm font-black text-white uppercase tracking-tighter">#A855F7</span>
+                        <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Clique para alterar</span>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="w-full bg-gradient-to-r from-fuchsia-600 to-pink-600 hover:from-fuchsia-500 hover:to-pink-500 text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl shadow-fuchsia-600/20 transition-all hover:-translate-y-1 active:scale-95">
+                Salvar Nova Etapa
+            </button>
+        </form>
+    </div>
+</div>
+
+<style>
+/* Custom Layout Adjustments */
+body { background-color: #0B0B0F !important; }
+
+.custom-scrollbar::-webkit-scrollbar { height: 12px; width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 20px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 20px; border: 3px solid #0B0B0F; transition: background 0.3s; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #d946ef; } /* fuchsia-500 */
+
+/* SortableJS Styles */
+.sortable-ghost-card { opacity: 0.2; transform: scale(0.95); grayscale: 1; }
+.sortable-drag-card { cursor: grabbing !important; transform: rotate(1.5deg) scale(1.02); box-shadow: 0 30px 60px -12px rgba(0,0,0,0.8); z-index: 100 !important; }
+
+.sortable-ghost-col { opacity: 0.1; }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
 <script>
-let draggedElement = null;
-
-function allowDrop(ev) {
-    ev.preventDefault();
-}
-
-function drag(ev) {
-    draggedElement = ev.target;
-    ev.dataTransfer.effectAllowed = "move";
-}
-
-function drop(ev) {
-    ev.preventDefault();
-    const targetColumn = ev.currentTarget;
-    const status = targetColumn.id.replace('kanban-', '');
-    
-    if (draggedElement) {
-        const conversationId = draggedElement.getAttribute('data-conversation-id');
-        const oldStatus = draggedElement.getAttribute('data-status');
-        
-        if (oldStatus !== status) {
-            // Atualizar status no backend
-            axios.post(`/crm/conversations/${conversationId}/status`, {
-                kanban_status: status
-            })
-            .then(response => {
-                // Mover o elemento para a nova coluna
-                targetColumn.appendChild(draggedElement);
-                draggedElement.setAttribute('data-status', status);
-                
-                // Atualizar contadores
-                updateCounters();
-            })
-            .catch(error => {
-                console.error('Erro ao atualizar status:', error);
-                alert('Erro ao mover contato. Tente novamente.');
-            });
-        }
-    }
-}
-
-function updateCounters() {
-    // Recarregar a página após 500ms para atualizar contadores
-    setTimeout(() => {
-        location.reload();
-    }, 500);
-}
-
-function openRemarketingModal() {
-    document.getElementById('remarketingModal').classList.remove('hidden');
-    // Carregar vozes se o checkbox de áudio estiver marcado
-    if (document.getElementById('sendAsAudio').checked) {
-        loadVoices();
-    }
-}
-
-function closeRemarketingModal() {
-    document.getElementById('remarketingModal').classList.add('hidden');
-    document.getElementById('remarketingForm').reset();
-    document.getElementById('selectedContacts').classList.add('hidden');
-    document.getElementById('voiceSelection').classList.add('hidden');
-}
-
-// Carregar vozes disponíveis do ElevenLabs
-function loadVoices() {
-    const voiceSelect = document.getElementById('remarketingVoiceId');
-    voiceSelect.innerHTML = '<option value="">Carregando vozes...</option>';
-    voiceSelect.disabled = true;
-    
-    axios.get('/api/elevenlabs/voices')
-        .then(response => {
-            if (response.data.success && response.data.data) {
-                const voices = response.data.data;
-                voiceSelect.innerHTML = '<option value="">Usar voz padrão</option>';
-                
-                voices.forEach(voice => {
-                    const option = document.createElement('option');
-                    option.value = voice.voice_id;
-                    option.textContent = `${voice.name}${voice.labels?.accent ? ' (' + voice.labels.accent + ')' : ''}`;
-                    voiceSelect.appendChild(option);
-                });
-                
-                voiceSelect.disabled = false;
-            } else {
-                voiceSelect.innerHTML = '<option value="">Erro ao carregar vozes</option>';
+document.addEventListener('DOMContentLoaded', function () {
+    // 1. Column Sorting
+    const board = document.getElementById('kanban-board');
+    if (board) {
+        new Sortable(board, {
+            animation: 300,
+            handle: '.column-drag-handle',
+            ghostClass: 'sortable-ghost-col',
+            onEnd: function () {
+                const columns = [...board.querySelectorAll('.kanban-column')];
+                const newOrder = columns.map((col, index) => ({ id: col.dataset.id, order: index + 1 }));
+                axios.post('{{ route('crm.stages.reorder') }}', { stages: newOrder });
             }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar vozes:', error);
-            voiceSelect.innerHTML = '<option value="">Erro ao carregar vozes. Use a voz padrão.</option>';
-            voiceSelect.disabled = false;
         });
-}
+    }
 
-// Mostrar/esconder seleção de voz quando checkbox de áudio é alterado
-document.getElementById('sendAsAudio').addEventListener('change', function() {
-    const voiceSelection = document.getElementById('voiceSelection');
-    if (this.checked) {
-        voiceSelection.classList.remove('hidden');
-        loadVoices();
-    } else {
-        voiceSelection.classList.add('hidden');
-    }
-});
-
-document.getElementById('remarketingTarget').addEventListener('change', function() {
-    if (this.value === 'selected') {
-        document.getElementById('selectedContacts').classList.remove('hidden');
-    } else {
-        document.getElementById('selectedContacts').classList.add('hidden');
-    }
-});
-
-function sendRemarketing(event) {
-    event.preventDefault();
-    
-    const message = document.getElementById('remarketingMessage').value;
-    const target = document.getElementById('remarketingTarget').value;
-    const sendAsAudio = document.getElementById('sendAsAudio').checked;
-    const selectedContacts = [];
-    
-    if (target === 'selected') {
-        const checkboxes = document.querySelectorAll('input[name="selected_contacts[]"]:checked');
-        checkboxes.forEach(cb => selectedContacts.push(cb.value));
-        
-        if (selectedContacts.length === 0) {
-            alert('Selecione pelo menos um contato.');
-            return;
-        }
-    }
-    
-    const messageType = sendAsAudio ? 'áudio' : 'texto';
-    if (!confirm(`Tem certeza que deseja enviar esta mensagem como ${messageType} para ${target === 'all' ? 'todos os contatos' : target === 'selected' ? selectedContacts.length + ' contatos selecionados' : 'contatos em "' + target + '"'}?`)) {
-        return;
-    }
-    
-    // Obter voice_id selecionado (se houver)
-    const voiceId = sendAsAudio ? document.getElementById('remarketingVoiceId').value : null;
-    
-    // Enviar para o backend
-    axios.post('/api/remarketing/send', {
-        message: message,
-        target: target,
-        contacts: selectedContacts,
-        send_as_audio: sendAsAudio,
-        voice_id: voiceId || null
-    })
-    .then(response => {
-        alert('Mensagens enviadas com sucesso!');
-        closeRemarketingModal();
-    })
-    .catch(error => {
-        console.error('Erro ao enviar mensagens:', error);
-        alert('Erro ao enviar mensagens. Verifique o console para mais detalhes.');
+    // 2. Card Sorting
+    document.querySelectorAll('.kanban-cards-container').forEach(container => {
+        new Sortable(container, {
+            group: 'shared',
+            animation: 200,
+            ghostClass: 'sortable-ghost-card',
+            dragClass: 'sortable-drag-card',
+            onEnd: function (evt) {
+                if (evt.from !== evt.to) {
+                    const id = evt.item.dataset.id;
+                    const stageId = evt.to.dataset.stageId;
+                    axios.post(`/crm/conversations/${id}/move`, { funnel_stage_id: stageId })
+                        .then(() => updateCounters());
+                }
+            }
+        });
     });
-}
+
+    // 3. Busca em Tempo Real
+    const searchInput = document.getElementById('kanban-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function(e) {
+            const term = e.target.value.toLowerCase();
+            document.querySelectorAll('.kanban-card').forEach(card => {
+                const name = card.querySelector('h3').innerText.toLowerCase();
+                const phone = card.querySelector('p').innerText.toLowerCase();
+                if (name.includes(term) || phone.includes(term)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            updateCounters();
+        });
+    }
+
+    // 4. Color Picker Preview
+    const colorPicker = document.getElementById('stageColorPicker');
+    const colorPreview = document.getElementById('colorPreview');
+    const colorHex = document.getElementById('colorHex');
+    
+    if (colorPicker) {
+        colorPicker.addEventListener('input', function(e) {
+            const color = e.target.value;
+            colorPreview.style.backgroundColor = color;
+            colorHex.innerText = color.toUpperCase();
+        });
+    }
+
+    window.openAddLeadModal = function(stageId) {
+        document.getElementById('modal_stage_id').value = stageId;
+        document.getElementById('addLeadModal').classList.remove('hidden');
+    }
+
+    window.toggleDropdown = function(id) {
+        document.querySelectorAll('[id^="dropdown-"]').forEach(el => el.id !== id && el.classList.add('hidden'));
+        document.getElementById(id).classList.toggle('hidden');
+    }
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.relative')) document.querySelectorAll('[id^="dropdown-"]').forEach(el => el.classList.add('hidden'));
+    });
+
+    function updateCounters() {
+        document.querySelectorAll('.kanban-column').forEach(col => {
+            const count = col.querySelectorAll('.kanban-card').length;
+            const badge = col.querySelector('h2 span');
+            if (badge) badge.innerText = count;
+        });
+    }
+
+    // 5. Scroll Horizontal Inteligente (Mouse Wheel + Grab to Scroll)
+    const scrollContainer = document.querySelector('.overflow-x-auto.custom-scrollbar');
+    if (scrollContainer) {
+        // Wheel Scroll
+        window.addEventListener('wheel', (evt) => {
+            const isOverCards = evt.target.closest('.kanban-cards-container');
+            
+            // Se o mouse estiver sobre a área de cards, permite o scroll vertical nativo das colunas
+            if (isOverCards) return;
+
+            if (evt.target.closest('#kanban-board') || evt.target.closest('.overflow-x-auto')) {
+                if (evt.deltaX !== 0) return;
+                scrollContainer.scrollLeft += evt.deltaY * 2; // Maior sensibilidade
+                evt.preventDefault();
+            }
+        }, { passive: false });
+
+        // Grab to Scroll
+        let isDown = false;
+        let startX;
+        let scrollLeft;
+
+        scrollContainer.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.kanban-card') || e.target.closest('button')) return; // Não atrapalhar cards
+            isDown = true;
+            scrollContainer.classList.add('cursor-grabbing');
+            startX = e.pageX - scrollContainer.offsetLeft;
+            scrollLeft = scrollContainer.scrollLeft;
+        });
+        scrollContainer.addEventListener('mouseleave', () => {
+            isDown = false;
+            scrollContainer.classList.remove('cursor-grabbing');
+        });
+        scrollContainer.addEventListener('mouseup', () => {
+            isDown = false;
+            scrollContainer.classList.remove('cursor-grabbing');
+        });
+        scrollContainer.addEventListener('mousemove', (e) => {
+            if(!isDown) return;
+            e.preventDefault();
+            const x = e.pageX - scrollContainer.offsetLeft;
+            const walk = (x - startX) * 2; // Velocidade do arraste
+            scrollContainer.scrollLeft = scrollLeft - walk;
+        });
+    }
+});
 </script>
 @endsection
-
