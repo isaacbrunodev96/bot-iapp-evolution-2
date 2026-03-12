@@ -18,6 +18,14 @@ Route::get('/', function () {
 });
 
 Route::middleware(['auth'])->group(function () {
+        Route::middleware(['admin'])->group(function () {
+            Route::get('/tenants', [App\Http\Controllers\TenantController::class, 'index'])->name('tenants.index');
+            Route::get('/tenants/create', [App\Http\Controllers\TenantController::class, 'create'])->name('tenants.create');
+            Route::post('/tenants', [App\Http\Controllers\TenantController::class, 'store'])->name('tenants.store');
+            Route::get('/tenants/{id}/edit', [App\Http\Controllers\TenantController::class, 'edit'])->name('tenants.edit');
+            Route::put('/tenants/{id}', [App\Http\Controllers\TenantController::class, 'update'])->name('tenants.update');
+            Route::delete('/tenants/{id}', [App\Http\Controllers\TenantController::class, 'destroy'])->name('tenants.destroy');
+        });
     Route::get('/instances', [App\Http\Controllers\InstanceController::class, 'index'])->name('instances.index');
     Route::post('/instances', [App\Http\Controllers\InstanceController::class, 'store'])->name('instances.store');
     Route::get('/instances/{instance}/refresh-qr', [App\Http\Controllers\InstanceController::class, 'refreshQr'])->name('instances.refresh-qr');

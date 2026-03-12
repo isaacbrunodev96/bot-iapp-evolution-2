@@ -116,9 +116,33 @@ class AIService
         pclose($handle);
         $responseText = trim($responseText);
         if ($responseText === '') {
+            Log::info('Ollama streaming retornou vazio, tentando sem streaming (fallback)');
+            $responseText = $this->generateWithOllamaNoStream($url, $model, $messages);
+        }
+        if ($responseText === '') {
             throw new \Exception('Resposta vazia recebida do Ollama.');
         }
         return $this->sanitizeResponseForChat($responseText);
+    }
+
+    /**
+     * Fallback: chama Ollama sem streaming (útil quando streaming devolve vazio)
+     */
+    private function generateWithOllamaNoStream(string $url, string $model, array $messages): string
+    {
+        $payload = [
+            'model' => $model,
+            'messages' => $messages,
+            'stream' => false,
+            'options' => ['temperature' => 0.1, 'top_p' => 0.5],
+        ];
+        $response = Http::timeout(180)->post($url, $payload);
+        if (! $response->successful()) {
+            throw new \Exception('Ollama (fallback): ' . ($response->body() ?: 'erro HTTP ' . $response->status()));
+        }
+        $data = $response->json();
+        $text = $data['message']['content'] ?? '';
+        return trim((string) $text);
     }
 
     /**

@@ -18,6 +18,8 @@ Route::post('/flow-executions', [FlowExecutionController::class, 'store']);
 
 // Rotas da API para o painel
 Route::get('/conversations', [ConversationController::class, 'index']);
+// Tenants API
+Route::get('/tenants', [\App\Http\Controllers\TenantController::class, 'apiIndex']);
 Route::get('/conversations/{id}', [ConversationController::class, 'show']);
 Route::post('/conversations/{id}/archive', [ConversationController::class, 'archive']);
 Route::put('/conversations/{id}/block', [ConversationController::class, 'block']);

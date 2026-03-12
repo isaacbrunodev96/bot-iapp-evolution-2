@@ -50,6 +50,7 @@ class MessageController extends Controller
             [
                 'instance_name' => $validated['instance_name'],
                 'contact' => $contact,
+                'tenant_id' => $tenantId,
             ],
             [
                 'last_message_at' => now(),
@@ -70,6 +71,7 @@ class MessageController extends Controller
             'direction' => $direction,
             'raw_data' => $validated['raw_message'] ?? null,
             'timestamp' => \Carbon\Carbon::createFromTimestamp($validated['timestamp']),
+            'tenant_id' => $tenantId,
         ]);
 
         // LÓGICA DE MOVIMENTAÇÃO AUTOMÁTICA NO KANBAN
@@ -110,10 +112,12 @@ class MessageController extends Controller
 
     public function index(Request $request)
     {
+        $tenantId = auth()->user()->tenant_id ?? $request->get('tenant_id');
         $conversationId = $request->query('conversation_id');
         $afterId = $request->query('after_id');
 
         $query = Message::with('conversation')
+            ->where('tenant_id', $tenantId)
             ->orderBy('created_at', 'asc');
 
         if ($conversationId) {

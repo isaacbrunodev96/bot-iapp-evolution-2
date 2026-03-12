@@ -9,12 +9,16 @@ class CrmController extends Controller
 {
     public function index()
     {
-        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())->pluck('instance_name');
+        $tenantId = auth()->user()->tenant_id;
+        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())
+            ->where('tenant_id', $tenantId)
+            ->pluck('instance_name');
         $statuses = ['novo', 'em_atendimento', 'aguardando', 'fechado'];
 
         $conversationsByStatus = [];
         foreach ($statuses as $status) {
             $conversationsByStatus[$status] = Conversation::with('latestMessage')
+                ->where('tenant_id', $tenantId)
                 ->whereIn('instance_name', $instanceNames)
                 ->where('kanban_status', $status)
                 ->where('is_archived', false)
@@ -31,8 +35,13 @@ class CrmController extends Controller
             'kanban_status' => 'required|string|in:novo,em_atendimento,aguardando,fechado',
         ]);
 
-        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())->pluck('instance_name');
-        $conversation = Conversation::whereIn('instance_name', $instanceNames)->findOrFail($id);
+        $tenantId = auth()->user()->tenant_id;
+        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())
+            ->where('tenant_id', $tenantId)
+            ->pluck('instance_name');
+        $conversation = Conversation::where('tenant_id', $tenantId)
+            ->whereIn('instance_name', $instanceNames)
+            ->findOrFail($id);
         $conversation->kanban_status = $request->kanban_status;
         $conversation->save();
 

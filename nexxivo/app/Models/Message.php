@@ -1,3 +1,12 @@
+    protected $fillable = [
+        // ...existing code...
+        'tenant_id',
+    ];
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class);
+    }
 <?php
 
 namespace App\Models;

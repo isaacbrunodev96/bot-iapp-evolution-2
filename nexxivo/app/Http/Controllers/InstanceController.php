@@ -11,7 +11,9 @@ class InstanceController extends Controller
 {
     public function index()
     {
+        $tenantId = auth()->user()->tenant_id;
         $instances = BotInstance::where('user_id', auth()->id())
+            ->where('tenant_id', $tenantId)
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -32,11 +34,14 @@ class InstanceController extends Controller
             'name.regex' => 'O nome só pode conter letras, números, hífen (-) e underscore (_).',
         ]);
 
+        $tenantId = auth()->user()->tenant_id;
         $name = trim($request->input('name'));
         $slug = Str::slug($name) ?: Str::random(8);
         $instanceName = 'user-' . auth()->id() . '-' . $slug;
 
-        if (BotInstance::where('instance_name', $instanceName)->exists()) {
+        if (BotInstance::where('instance_name', $instanceName)
+            ->where('tenant_id', $tenantId)
+            ->exists()) {
             return back()->withErrors(['name' => 'Já existe uma instância com esse nome.']);
         }
 
