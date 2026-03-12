@@ -1,21 +1,15 @@
-    protected $fillable = [
-        // ...existing code...
-        'tenant_id',
-    ];
-
-    public function tenant()
-    {
-        return $this->belongsTo(Tenant::class);
-    }
 <?php
 
 namespace App\Models;
 
+use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Message extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'conversation_id',
         'instance_name',
@@ -26,6 +20,7 @@ class Message extends Model
         'direction',
         'raw_data',
         'timestamp',
+        'tenant_id',
     ];
 
     protected $casts = [
@@ -38,4 +33,3 @@ class Message extends Model
         return $this->belongsTo(Conversation::class);
     }
 }
-

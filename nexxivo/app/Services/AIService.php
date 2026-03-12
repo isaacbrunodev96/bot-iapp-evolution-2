@@ -18,14 +18,16 @@ class AIService
     private $ollamaUrl;
     private $geminiApiKey;
     private $defaultModel;
+    private $tenantId;
 
-    public function __construct()
+    public function __construct($tenantId = null)
     {
+        $this->tenantId = $tenantId;
         // Buscar configurações do banco de dados, com fallback para .env
-        $raw = AISetting::get('ollama_url', config('services.ai.ollama_url', env('OLLAMA_URL', 'http://localhost:11434')));
+        $raw = AISetting::get('ollama_url', config('services.ai.ollama_url', env('OLLAMA_URL', 'http://localhost:11434')), $this->tenantId);
         $this->ollamaUrl = str_replace('http://localhost', 'http://127.0.0.1', $raw);
-        $this->geminiApiKey = AISetting::get('gemini_api_key', config('services.ai.gemini_key', env('GEMINI_API_KEY', '')));
-        $this->defaultModel = AISetting::get('default_provider', config('services.ai.default_model', env('AI_DEFAULT_MODEL', 'ollama')));
+        $this->geminiApiKey = AISetting::get('gemini_api_key', config('services.ai.gemini_key', env('GEMINI_API_KEY', '')), $this->tenantId);
+        $this->defaultModel = AISetting::get('default_provider', config('services.ai.default_model', env('AI_DEFAULT_MODEL', 'ollama')), $this->tenantId);
     }
 
     /**
@@ -58,7 +60,7 @@ class AIService
      */
     private function generateWithOllama(array $context, ?string $model = null): string
     {
-        $defaultModel = AISetting::get('ollama_model', config('services.ai.ollama_model', env('OLLAMA_MODEL', 'llama2')));
+        $defaultModel = AISetting::get('ollama_model', config('services.ai.ollama_model', env('OLLAMA_MODEL', 'llama2')), $this->tenantId);
         $model = trim((string) ($model ?? $defaultModel));
         if ($model === '') {
             $model = $defaultModel;
@@ -150,12 +152,12 @@ class AIService
      */
     private function generateWithGemini(array $context, ?string $model = null): string
     {
-        $apiKey = AISetting::get('gemini_api_key', '') ?: $this->geminiApiKey;
+        $apiKey = AISetting::get('gemini_api_key', '', $this->tenantId) ?: $this->geminiApiKey;
         if (empty($apiKey)) {
-            throw new \Exception("Chave da API do Gemini não configurada. Configure em Configurações IA.");
+            throw new \Exception("Chave da API do Gemini não configurada para este Tenant. Configure em Configurações IA.");
         }
 
-        $model = $model ?? AISetting::get('gemini_model', config('services.ai.gemini_model', env('GEMINI_MODEL', 'gemini-2.0-flash')));
+        $model = $model ?? AISetting::get('gemini_model', config('services.ai.gemini_model', env('GEMINI_MODEL', 'gemini-2.0-flash')), $this->tenantId);
         $model = trim((string) $model);
         if ($model === '' || $model === 'gemini-pro' || $model === 'gemini-1.5-flash') {
             $model = 'gemini-2.0-flash';

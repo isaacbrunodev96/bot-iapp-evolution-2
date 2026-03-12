@@ -4,9 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\BelongsToTenant;
 
 class BotInstance extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
             'user_id',
             'instance_name',
@@ -21,10 +24,7 @@ class BotInstance extends Model
             'qrcode_generated_at' => 'datetime',
         ];
 
-        public function tenant(): BelongsTo
-        {
-            return $this->belongsTo(Tenant::class);
-        }
+
 
         public function user(): BelongsTo
         {

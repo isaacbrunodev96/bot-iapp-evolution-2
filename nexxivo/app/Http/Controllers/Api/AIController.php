@@ -9,13 +9,6 @@ use Illuminate\Support\Facades\Log;
 
 class AIController extends Controller
 {
-    private $aiService;
-
-    public function __construct(AIService $aiService)
-    {
-        $this->aiService = $aiService;
-    }
-
     /**
      * Gera resposta usando IA
      */
@@ -51,7 +44,10 @@ class AIController extends Controller
                 $conversationHistory = $validated['conversation_history'];
             }
 
-            $response = $this->aiService->generateResponse(
+            $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
+            $aiService = new AIService($tenantId);
+
+            $response = $aiService->generateResponse(
                 $validated['prompt'],
                 $validated['message'],
                 $validated['provider'] ?? null,

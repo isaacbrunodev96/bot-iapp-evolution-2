@@ -25,8 +25,10 @@ Route::post('/conversations/{id}/archive', [ConversationController::class, 'arch
 Route::put('/conversations/{id}/block', [ConversationController::class, 'block']);
 Route::delete('/conversations/clear-all', [ConversationController::class, 'clearAll']);
 
-// Precisa de sessão web para o polling do chat em tempo real
-Route::get('/messages', [MessageController::class, 'index'])->middleware(['web', 'auth']);
+Route::middleware(['web', 'auth', 'tenant'])->group(function () {
+    Route::get('/messages', [MessageController::class, 'index']);
+});
+
 
 Route::get('/flows', [FlowController::class, 'index']);
 Route::get('/flows/active', [FlowController::class, 'active']);
@@ -34,10 +36,16 @@ Route::post('/flows', [FlowController::class, 'store']);
 Route::put('/flows/{id}', [FlowController::class, 'update']);
 Route::delete('/flows/{id}', [FlowController::class, 'destroy']);
 
-Route::get('/bot/qrcode/{instanceName}', [BotController::class, 'getQrcode']);
 Route::post('/bot/send-message', [BotController::class, 'sendMessage']);
 
 Route::get('/flow-executions', [FlowExecutionController::class, 'index']);
+
+// === Rotas de Gerenciamento do WhatsApp ===
+Route::middleware(['web', 'auth', 'tenant'])->group(function () {
+    Route::get('/bot/qrcode/{instanceName}', [BotController::class, 'getQrcode']);
+    Route::post('/bot/start', [BotController::class, 'startInstance']);
+    Route::post('/bot/stop', [BotController::class, 'stopInstance']);
+});
 
 // Rotas de IA
 Route::post('/ai/generate', [AIController::class, 'generate']);

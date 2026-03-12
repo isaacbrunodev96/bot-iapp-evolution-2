@@ -15,12 +15,14 @@ class ElevenLabsService
     private string $apiKey;
     private string $voiceId;
     private string $modelId;
+    private ?int $tenantId;
 
-    public function __construct()
+    public function __construct($tenantId = null)
     {
-        $this->apiKey = (string) AISetting::get('elevenlabs_api_key', config('services.elevenlabs.api_key', env('ELEVENLABS_API_KEY', '')));
-        $this->voiceId = (string) AISetting::get('elevenlabs_voice_id', config('services.elevenlabs.voice_id', env('ELEVENLABS_VOICE_ID', '21m00Tcm4TlvDq8ikWAM')));
-        $this->modelId = (string) AISetting::get('elevenlabs_model_id', config('services.elevenlabs.model_id', env('ELEVENLABS_MODEL_ID', 'eleven_multilingual_v2')));
+        $this->tenantId = $tenantId;
+        $this->apiKey = (string) AISetting::get('elevenlabs_api_key', config('services.elevenlabs.api_key', env('ELEVENLABS_API_KEY', '')), $this->tenantId);
+        $this->voiceId = (string) AISetting::get('elevenlabs_voice_id', config('services.elevenlabs.voice_id', env('ELEVENLABS_VOICE_ID', 'JBFqnCBsd6RMkjVDRZzb')), $this->tenantId);
+        $this->modelId = (string) AISetting::get('elevenlabs_model_id', config('services.elevenlabs.model_id', env('ELEVENLABS_MODEL_ID', 'eleven_multilingual_v2')), $this->tenantId);
     }
 
     /**

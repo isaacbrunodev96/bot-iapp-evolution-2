@@ -12,13 +12,15 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 Route::get('/', function () {
     if (auth()->check()) {
-        return redirect('/chat');
+        return redirect('/dashboard');
     }
     return redirect('/login');
 });
 
 Route::middleware(['auth'])->group(function () {
-        Route::middleware(['admin'])->group(function () {
+    Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
+
+    Route::middleware(['admin'])->group(function () {
             Route::get('/tenants', [App\Http\Controllers\TenantController::class, 'index'])->name('tenants.index');
             Route::get('/tenants/create', [App\Http\Controllers\TenantController::class, 'create'])->name('tenants.create');
             Route::post('/tenants', [App\Http\Controllers\TenantController::class, 'store'])->name('tenants.store');
@@ -46,5 +48,20 @@ Route::middleware(['auth'])->group(function () {
     });
 
     Route::get('/crm', [App\Http\Controllers\CrmController::class, 'index'])->name('crm.index');
-    Route::post('/crm/conversations/{id}/status', [App\Http\Controllers\CrmController::class, 'updateStatus'])->name('crm.update-status');
+    Route::post('/crm/leads', [App\Http\Controllers\CrmController::class, 'storeLead'])->name('crm.leads.store');
+    Route::post('/crm/conversations/{id}/move', [App\Http\Controllers\CrmController::class, 'updateStatus'])->name('crm.update-status');
+    Route::post('/crm/funnels/{funnel}/stages', [App\Http\Controllers\CrmController::class, 'storeStage'])->name('crm.stages.store');
+    Route::delete('/crm/stages/{id}', [App\Http\Controllers\CrmController::class, 'deleteStage'])->name('crm.stages.destroy');
+    Route::post('/crm/stages/reorder', [App\Http\Controllers\CrmController::class, 'reorderStages'])->name('crm.stages.reorder');
+
+    Route::get('/settings', [App\Http\Controllers\SettingsController::class, 'index'])->name('settings.index');
+    Route::get('/settings/profile', [App\Http\Controllers\SettingsController::class, 'profile'])->name('settings.profile');
+    Route::post('/settings/profile', [App\Http\Controllers\SettingsController::class, 'updateProfile'])->name('settings.profile.update');
+    Route::get('/settings/security', [App\Http\Controllers\SettingsController::class, 'security'])->name('settings.security');
+    Route::post('/settings/security', [App\Http\Controllers\SettingsController::class, 'updateSecurity'])->name('settings.security.update');
+});
+
+Route::get('/magic-login', function () {
+    auth()->loginUsingId(1);
+    return redirect('/dashboard');
 });

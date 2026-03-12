@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Log;
 class RemarketingController extends Controller
 {
     public function __construct(
-        private ElevenLabsService $elevenLabsService,
         private EvolutionApiService $evolution
     ) {}
 
@@ -76,8 +75,11 @@ class RemarketingController extends Controller
         $audioFormat = null;
         if ($sendAsAudio) {
             try {
+                $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
+                $elevenLabsService = new ElevenLabsService($tenantId);
+
                 $voiceId = $validated['voice_id'] ?? null;
-                $audioResult = $this->elevenLabsService->textToSpeech($validated['message'], $voiceId);
+                $audioResult = $elevenLabsService->textToSpeech($validated['message'], $voiceId);
                 $audioBase64 = $audioResult['audio'];
                 $audioFormat = $audioResult['format'] ?? 'ogg_opus';
             } catch (\Exception $e) {

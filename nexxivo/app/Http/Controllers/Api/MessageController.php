@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 
 class MessageController extends Controller
 {
-    public function store(Request $request)
+    public function store(Request $request, \App\Services\TicketRoutingService $routingService)
     {
         $validated = $request->validate([
             'instance_name' => 'required|string',
@@ -44,6 +44,7 @@ class MessageController extends Controller
 
         $direction = $validated['direction'] ?? 'incoming';
         $contact = $direction === 'incoming' ? $validated['from'] : ($validated['to'] ?? $validated['from']);
+        $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
 
         // Buscar ou criar conversa
         $conversation = Conversation::firstOrCreate(
@@ -95,6 +96,11 @@ class MessageController extends Controller
                     ]);
                 }
             }
+
+            // Distribuir via TicketRouting caso recém criada ou devolvida e PENDENTE
+            if ($conversation->status === 'pending') {
+                 $routingService->routeConversation($conversation);
+            }
         }
 
         Log::info('Mensagem recebida', [
@@ -112,7 +118,7 @@ class MessageController extends Controller
 
     public function index(Request $request)
     {
-        $tenantId = auth()->user()->tenant_id ?? $request->get('tenant_id');
+        $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
         $conversationId = $request->query('conversation_id');
         $afterId = $request->query('after_id');
 
