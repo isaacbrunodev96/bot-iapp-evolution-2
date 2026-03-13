@@ -1,0 +1,114 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\AIService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+
+class AIController extends Controller
+{
+    /**
+     * Gera resposta usando IA
+     */
+    public function generate(Request $request)
+    {
+        $validated = $request->validate([
+            'prompt' => 'required|string',
+            'message' => 'required|string',
+            'provider' => 'nullable|string|in:ollama,gemini',
+            'model' => 'nullable|string',
+            'conversation_id' => 'nullable|integer|exists:conversations,id',
+            'use_context' => 'nullable|boolean',
+            'conversation_history' => 'nullable|array',
+        ]);
+
+        // VALIDAÇÃO CRÍTICA: Não processar mensagens vazias
+        if (empty(trim($validated['message']))) {
+            Log::warning('Tentativa de processar mensagem vazia bloqueada');
+            return response()->json([
+                'success' => false,
+                'message' => 'Mensagens vazias não podem ser processadas',
+            ], 400);
+        }
+
+        try {
+            $conversationHistory = [];
+            
+            // Se use_context está ativo e temos conversation_id, buscar histórico
+            if (!empty($validated['use_context']) && !empty($validated['conversation_id'])) {
+                $conversationHistory = $this->getConversationHistory($validated['conversation_id']);
+            } elseif (!empty($validated['conversation_history'])) {
+                // Se histórico foi enviado diretamente, usar
+                $conversationHistory = $validated['conversation_history'];
+            }
+
+            $tenantId = $request->get('tenant_id') ?? auth()->user()?->tenant_id;
+            $aiService = new AIService($tenantId);
+
+            $response = $aiService->generateResponse(
+                $validated['prompt'],
+                $validated['message'],
+                $validated['provider'] ?? null,
+                $validated['model'] ?? null,
+                $conversationHistory
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'response' => $response,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao gerar resposta com IA', [
+                'error' => $e->getMessage(),
+                'prompt' => substr($validated['prompt'], 0, 100),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao gerar resposta com IA: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Busca histórico de mensagens da conversa
+     */
+    private function getConversationHistory(int $conversationId, int $limit = 30): array
+    {
+        $messages = \App\Models\Message::where('conversation_id', $conversationId)
+            ->orderBy('created_at', 'asc')
+            ->limit($limit)
+            ->get();
+
+        // Filtrar mensagens vazias antes de mapear
+        $history = $messages->filter(function ($msg) {
+            $msgText = trim($msg->message ?? '');
+            // Rejeitar mensagens vazias ou placeholders de erro
+            return !empty($msgText) && 
+                   $msgText !== '[Mensagem vazia]' && 
+                   $msgText !== '[Erro ao processar áudio]' &&
+                   $msgText !== '[Áudio não disponível]' &&
+                   $msgText !== '[Áudio não transcrito]';
+        })->map(function ($msg) {
+            return [
+                'message' => $msg->message,
+                'direction' => $msg->direction,
+                'timestamp' => $msg->timestamp->toIso8601String(),
+            ];
+        })->values()->toArray(); // values() reindexa o array após filtrar
+        
+        // Log para debug
+        Log::info('Histórico de conversa carregado', [
+            'conversation_id' => $conversationId,
+            'messages_count' => count($history),
+            'last_messages' => array_slice($history, -3), // Últimas 3 mensagens para debug
+        ]);
+
+        return $history;
+    }
+}
+

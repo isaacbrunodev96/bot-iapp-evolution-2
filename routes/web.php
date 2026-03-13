@@ -1,0 +1,67 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\FlowManagementController;
+use App\Http\Controllers\Auth\LoginController;
+
+// Rotas públicas (login)
+Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
+Route::post('/login', [LoginController::class, 'login']);
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
+
+Route::get('/', function () {
+    if (auth()->check()) {
+        return redirect('/dashboard');
+    }
+    return redirect('/login');
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
+
+    Route::middleware(['admin'])->group(function () {
+            Route::get('/tenants', [App\Http\Controllers\TenantController::class, 'index'])->name('tenants.index');
+            Route::get('/tenants/create', [App\Http\Controllers\TenantController::class, 'create'])->name('tenants.create');
+            Route::post('/tenants', [App\Http\Controllers\TenantController::class, 'store'])->name('tenants.store');
+            Route::get('/tenants/{id}/edit', [App\Http\Controllers\TenantController::class, 'edit'])->name('tenants.edit');
+            Route::put('/tenants/{id}', [App\Http\Controllers\TenantController::class, 'update'])->name('tenants.update');
+            Route::delete('/tenants/{id}', [App\Http\Controllers\TenantController::class, 'destroy'])->name('tenants.destroy');
+        });
+    Route::get('/instances', [App\Http\Controllers\InstanceController::class, 'index'])->name('instances.index');
+    Route::post('/instances', [App\Http\Controllers\InstanceController::class, 'store'])->name('instances.store');
+    Route::get('/instances/{instance}/refresh-qr', [App\Http\Controllers\InstanceController::class, 'refreshQr'])->name('instances.refresh-qr');
+    Route::get('/instances/{instance}/evolution-connect-raw', [App\Http\Controllers\InstanceController::class, 'evolutionConnectRaw'])->name('instances.evolution-connect-raw');
+    Route::post('/instances/{instance}/save-qr', [App\Http\Controllers\InstanceController::class, 'saveQrFromFrontend'])->name('instances.save-qr');
+    Route::delete('/instances/{instance}', [App\Http\Controllers\InstanceController::class, 'destroy'])->name('instances.destroy');
+
+    Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
+    Route::get('/chat/{id}', [ChatController::class, 'show'])->name('chat.show');
+
+    Route::get('/flows', [FlowManagementController::class, 'index'])->name('flows.index');
+    Route::get('/flows/create', [FlowManagementController::class, 'create'])->name('flows.create');
+    Route::get('/flows/{id}/edit', [FlowManagementController::class, 'edit'])->name('flows.edit');
+
+    Route::middleware(['admin'])->group(function () {
+        Route::get('/ai-settings', [App\Http\Controllers\AISettingsController::class, 'index'])->name('ai-settings.index');
+        Route::post('/ai-settings', [App\Http\Controllers\AISettingsController::class, 'store'])->name('ai-settings.store');
+    });
+
+    Route::get('/crm', [App\Http\Controllers\CrmController::class, 'index'])->name('crm.index');
+    Route::post('/crm/leads', [App\Http\Controllers\CrmController::class, 'storeLead'])->name('crm.leads.store');
+    Route::post('/crm/conversations/{id}/move', [App\Http\Controllers\CrmController::class, 'updateStatus'])->name('crm.update-status');
+    Route::post('/crm/funnels/{funnel}/stages', [App\Http\Controllers\CrmController::class, 'storeStage'])->name('crm.stages.store');
+    Route::delete('/crm/stages/{id}', [App\Http\Controllers\CrmController::class, 'deleteStage'])->name('crm.stages.destroy');
+    Route::post('/crm/stages/reorder', [App\Http\Controllers\CrmController::class, 'reorderStages'])->name('crm.stages.reorder');
+
+    Route::get('/settings', [App\Http\Controllers\SettingsController::class, 'index'])->name('settings.index');
+    Route::get('/settings/profile', [App\Http\Controllers\SettingsController::class, 'profile'])->name('settings.profile');
+    Route::post('/settings/profile', [App\Http\Controllers\SettingsController::class, 'updateProfile'])->name('settings.profile.update');
+    Route::get('/settings/security', [App\Http\Controllers\SettingsController::class, 'security'])->name('settings.security');
+    Route::post('/settings/security', [App\Http\Controllers\SettingsController::class, 'updateSecurity'])->name('settings.security.update');
+});
+
+Route::get('/magic-login', function () {
+    auth()->loginUsingId(1);
+    return redirect('/dashboard');
+});
