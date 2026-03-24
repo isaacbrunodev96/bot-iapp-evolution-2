@@ -290,11 +290,18 @@ class EvolutionWebhookController extends Controller
 
         $messageId = $key['id'] ?? $data['id'] ?? $data['messageId'] ?? uniqid('ev_', true);
         $pushName = $data['pushName'] ?? $data['notifyName'] ?? '';
-        $messageContent = $data['message'] ?? $data['content'] ?? [];
+        $rawMessage = $data['message'] ?? $data['content'] ?? [];
+        $unwrapped = $this->unwrapBaileysMessage(is_array($rawMessage) ? $rawMessage : []);
         $messageTimestamp = (int) ($data['messageTimestamp'] ?? $key['messageTimestamp'] ?? time());
 
-        $text = $this->extractTextFromPayload($messageContent, $data);
-        if (($text === '' || $text === null) && is_array($messageContent) && $this->payloadHasMedia($messageContent)) {
+        $text = $this->extractTextFromPayload($unwrapped, $data);
+        if (($text === '' || $text === null) && $this->payloadHasReaction($unwrapped)) {
+            $emoji = is_array($unwrapped['reactionMessage'] ?? null)
+                ? (string) ($unwrapped['reactionMessage']['text'] ?? '')
+                : '';
+            $text = trim($emoji) !== '' ? '[Reação] '.$emoji : '[Reação]';
+        }
+        if (($text === '' || $text === null) && $this->payloadHasMedia($unwrapped)) {
             $text = '[Mídia]';
         }
         Log::info('Evolution processOneMessage', [
@@ -305,9 +312,17 @@ class EvolutionWebhookController extends Controller
             'text_preview' => is_string($text) && $text !== '' ? substr($text, 0, 50) : '(vazio)',
         ]);
         if ($text === '' || $text === null) {
+            if ($this->isOnlyProtocolNoise($unwrapped)) {
+                Log::debug('Evolution MESSAGES_UPSERT ignorado (protocolo/sincronização)', [
+                    'instance' => $instanceName,
+                    'message_keys' => array_keys($unwrapped),
+                ]);
+
+                return;
+            }
             Log::warning('Evolution MESSAGES_UPSERT ignorado (sem texto)', [
                 'instance' => $instanceName,
-                'message_keys' => is_array($messageContent) ? array_keys($messageContent) : gettype($messageContent),
+                'message_keys' => array_keys($unwrapped),
                 'data_keys' => array_keys($data),
             ]);
             return;
@@ -406,6 +421,57 @@ class EvolutionWebhookController extends Controller
         return false;
     }
 
+    private function payloadHasReaction(array $messageContent): bool
+    {
+        return ! empty($messageContent['reactionMessage']);
+    }
+
+    /**
+     * Desembrulha ephemeralMessage / viewOnce / etc. para ler texto ou mídia interior.
+     */
+    private function unwrapBaileysMessage(array $messageContent, int $depth = 0): array
+    {
+        if ($depth > 10) {
+            return $messageContent;
+        }
+
+        $wrapperKeys = [
+            'ephemeralMessage',
+            'viewOnceMessage',
+            'viewOnceMessageV2',
+            'documentWithCaptionMessage',
+            'buttonsResponseMessage',
+            'templateMessage',
+            'interactiveMessage',
+        ];
+
+        foreach ($wrapperKeys as $wk) {
+            if (empty($messageContent[$wk]) || ! is_array($messageContent[$wk])) {
+                continue;
+            }
+            $inner = $messageContent[$wk];
+            if (! empty($inner['message']) && is_array($inner['message'])) {
+                return $this->unwrapBaileysMessage($inner['message'], $depth + 1);
+            }
+
+            return $this->unwrapBaileysMessage($inner, $depth + 1);
+        }
+
+        return $messageContent;
+    }
+
+    /** Apenas chaves de protocolo Baileys (sem conteúdo para o Inbox). */
+    private function isOnlyProtocolNoise(array $m): bool
+    {
+        if ($m === []) {
+            return true;
+        }
+        $noise = ['senderKeyDistributionMessage', 'messageContextInfo', 'deviceSentMessage'];
+        $keys = array_keys($m);
+
+        return count(array_diff($keys, $noise)) === 0;
+    }
+
     /**
      * Extrai texto da mensagem suportando vários formatos (Baileys, Evolution v2, evoapicloud).
      */
@@ -426,6 +492,15 @@ class EvolutionWebhookController extends Controller
         $text = $this->extractText($messageContent);
         if (is_string($text) && trim($text) !== '') {
             return trim($text);
+        }
+        // Legendas em mídia
+        foreach (['imageMessage', 'videoMessage', 'documentMessage'] as $mk) {
+            if (! empty($messageContent[$mk]['caption']) && is_string($messageContent[$mk]['caption'])) {
+                $c = trim($messageContent[$mk]['caption']);
+                if ($c !== '') {
+                    return $c;
+                }
+            }
         }
         // Fallback: Evolution às vezes envia texto em data['text'] ou data['body']
         $text = $data['text'] ?? $data['body'] ?? null;
