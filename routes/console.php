@@ -20,8 +20,8 @@ Artisan::command('nexxivo:sync-tenant-ids', function () {
         ->with('user:id,tenant_id')
         ->chunkById(100, function ($rows) use (&$updated) {
             foreach ($rows as $bi) {
-                $tid = $bi->user?->tenant_id;
-                if ($tid) {
+                $tid = $bi->effectiveTenantId();
+                if ($tid !== null) {
                     $bi->update(['tenant_id' => $tid]);
                     $updated++;
                 }
@@ -42,7 +42,7 @@ Artisan::command('nexxivo:sync-tenant-ids', function () {
                     ->with('user:id,tenant_id')
                     ->first();
 
-                $tid = $bi?->tenant_id ?? $bi?->user?->tenant_id;
+                $tid = $bi?->effectiveTenantId();
                 $uid = $bi?->user_id;
 
                 $updates = [];

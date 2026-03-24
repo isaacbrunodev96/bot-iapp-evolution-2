@@ -23,6 +23,11 @@ class BotInstance extends Model
         $query->where('user_id', $user->id);
         if ($user->tenant_id !== null) {
             $query->where('tenant_id', $user->tenant_id);
+        } elseif (Tenant::query()->count() === 1) {
+            $only = (int) Tenant::query()->value('id');
+            $query->where(function (Builder $q) use ($only) {
+                $q->whereNull('tenant_id')->orWhere('tenant_id', $only);
+            });
         } else {
             $query->whereNull('tenant_id');
         }
@@ -50,5 +55,35 @@ class BotInstance extends Model
         {
             return $this->belongsTo(User::class);
         }
+
+    /**
+     * tenant_id para webhook/Inbox: instância, utilizador dono, ou único tenant na base (deploy single-tenant).
+     */
+    public function effectiveTenantId(): ?int
+    {
+        if ($this->tenant_id !== null) {
+            return (int) $this->tenant_id;
+        }
+
+        $this->loadMissing('user:id,tenant_id');
+        if ($this->user?->tenant_id !== null) {
+            return (int) $this->user->tenant_id;
+        }
+
+        if ($this->user_id) {
+            $tid = User::query()->whereKey($this->user_id)->value('tenant_id');
+            if ($tid !== null) {
+                return (int) $tid;
+            }
+        }
+
+        if (Tenant::query()->count() === 1) {
+            $v = Tenant::query()->value('id');
+
+            return $v !== null ? (int) $v : null;
+        }
+
+        return null;
+    }
     }
 

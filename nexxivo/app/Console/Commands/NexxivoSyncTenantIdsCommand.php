@@ -18,8 +18,8 @@ class NexxivoSyncTenantIdsCommand extends Command
         $n = 0;
         BotInstance::query()->whereNull('tenant_id')->with('user:id,tenant_id')->chunkById(100, function ($rows) use (&$n) {
             foreach ($rows as $bi) {
-                $tid = $bi->user?->tenant_id;
-                if ($tid) {
+                $tid = $bi->effectiveTenantId();
+                if ($tid !== null) {
                     $bi->update(['tenant_id' => $tid]);
                     $n++;
                 }
@@ -36,7 +36,7 @@ class NexxivoSyncTenantIdsCommand extends Command
                     ->where('instance_name', $c->instance_name)
                     ->with('user:id,tenant_id')
                     ->first();
-                $tid = $bi?->tenant_id ?? $bi?->user?->tenant_id;
+                $tid = $bi?->effectiveTenantId();
                 $uid = $bi?->user_id;
                 $updates = [];
                 if ($c->tenant_id === null && $tid) {

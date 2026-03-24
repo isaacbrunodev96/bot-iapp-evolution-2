@@ -337,7 +337,7 @@ class EvolutionWebhookController extends Controller
         $instanceModel = BotInstance::with('user:id,tenant_id')
             ->where('instance_name', $instanceName)
             ->first();
-        $tenantId = $instanceModel?->tenant_id ?? $instanceModel?->user?->tenant_id;
+        $tenantId = $instanceModel?->effectiveTenantId();
         $userId = $instanceModel?->user_id;
 
         // Webhook não tem auth: BelongsToTenant não preenche tenant_id. Inbox usa escopo por tenant; instância pode ter tenant só no user.
