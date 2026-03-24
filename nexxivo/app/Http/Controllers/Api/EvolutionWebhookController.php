@@ -316,7 +316,12 @@ class EvolutionWebhookController extends Controller
             $contact = '55' . $contact;
         }
 
-        $conversation = Conversation::firstOrCreate(
+        $instanceModel = BotInstance::where('instance_name', $instanceName)->first();
+        $tenantId = $instanceModel?->tenant_id;
+        $userId = $instanceModel?->user_id;
+
+        // Webhook não tem auth: BelongsToTenant não preenche tenant_id. Sem isso o Inbox (escopo por tenant) fica vazio.
+        $conversation = Conversation::withoutGlobalScopes()->firstOrCreate(
             [
                 'instance_name' => $instanceName,
                 'contact' => $contact,
@@ -324,14 +329,18 @@ class EvolutionWebhookController extends Controller
             [
                 'contact_name' => $pushName,
                 'last_message_at' => now(),
+                'tenant_id' => $tenantId,
+                'user_id' => $userId,
             ]
         );
         $conversation->update([
             'contact_name' => $pushName ?: $conversation->contact_name,
             'last_message_at' => now(),
+            'tenant_id' => $tenantId ?? $conversation->tenant_id,
+            'user_id' => $userId ?? $conversation->user_id,
         ]);
 
-        $message = Message::firstOrCreate(
+        $message = Message::withoutGlobalScopes()->firstOrCreate(
             [
                 'conversation_id' => $conversation->id,
                 'message_id' => $messageId,
@@ -344,6 +353,7 @@ class EvolutionWebhookController extends Controller
                 'direction' => 'incoming',
                 'raw_data' => $data,
                 'timestamp' => \Carbon\Carbon::createFromTimestamp($messageTimestamp),
+                'tenant_id' => $tenantId,
             ]
         );
 
