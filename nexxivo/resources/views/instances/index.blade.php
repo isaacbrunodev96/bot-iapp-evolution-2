@@ -133,7 +133,17 @@
                     </div>
                 </div>
 
-                @if($instance->qrcode)
+                @if($instance->status === 'connected')
+                <div class="mt-4 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 border border-emerald-500/20">
+                        <i class="fas fa-check-circle text-sm"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-white">WhatsApp conectado</p>
+                        <p class="text-xs text-gray-400">Esta instância está ativa e pode enviar e receber mensagens.</p>
+                    </div>
+                </div>
+                @elseif($instance->qrcode)
                 <div class="mt-4 flex flex-col items-center">
                     <div class="bg-white p-2 rounded-xl">
                         <img src="{{ str_starts_with($instance->qrcode, 'data:image') ? $instance->qrcode : 'data:image/png;base64,'.$instance->qrcode }}" alt="QR Code" class="w-40 h-40">
@@ -151,8 +161,8 @@
                         <i class="fas fa-plug text-sm"></i>
                     </div>
                     <div>
-                        <p class="text-sm font-bold text-white">Instância Inativa</p>
-                        <p class="text-xs text-gray-500">Inicie a API no servidor.</p>
+                        <p class="text-sm font-bold text-white">Aguardando conexão</p>
+                        <p class="text-xs text-gray-500">Gere o QR em Canais ou confira se a Evolution API está rodando no servidor.</p>
                     </div>
                 </div>
                 @endif
