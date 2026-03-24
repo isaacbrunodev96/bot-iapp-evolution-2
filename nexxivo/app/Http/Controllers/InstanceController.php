@@ -11,9 +11,7 @@ class InstanceController extends Controller
 {
     public function index()
     {
-        $tenantId = auth()->user()->tenant_id;
-        $instances = BotInstance::where('user_id', auth()->id())
-            ->where('tenant_id', $tenantId)
+        $instances = BotInstance::forPanelUser()
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -68,6 +66,7 @@ class InstanceController extends Controller
 
         $instance = BotInstance::create([
             'user_id' => auth()->id(),
+            'tenant_id' => $tenantId,
             'instance_name' => $instanceName,
             'status' => 'disconnected',
             'qrcode' => $qrcodeBase64,

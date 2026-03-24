@@ -291,9 +291,12 @@ class EvolutionWebhookController extends Controller
         $messageId = $key['id'] ?? $data['id'] ?? $data['messageId'] ?? uniqid('ev_', true);
         $pushName = $data['pushName'] ?? $data['notifyName'] ?? '';
         $messageContent = $data['message'] ?? $data['content'] ?? [];
-        $messageTimestamp = (int) ($data['messageTimestamp'] ?? $data['messageTimestamp'] ?? time());
+        $messageTimestamp = (int) ($data['messageTimestamp'] ?? $key['messageTimestamp'] ?? time());
 
         $text = $this->extractTextFromPayload($messageContent, $data);
+        if (($text === '' || $text === null) && is_array($messageContent) && $this->payloadHasMedia($messageContent)) {
+            $text = '[Mídia]';
+        }
         Log::info('Evolution processOneMessage', [
             'instance' => $instanceName,
             'remoteJid' => $remoteJid,
@@ -316,11 +319,13 @@ class EvolutionWebhookController extends Controller
             $contact = '55' . $contact;
         }
 
-        $instanceModel = BotInstance::where('instance_name', $instanceName)->first();
-        $tenantId = $instanceModel?->tenant_id;
+        $instanceModel = BotInstance::with('user:id,tenant_id')
+            ->where('instance_name', $instanceName)
+            ->first();
+        $tenantId = $instanceModel?->tenant_id ?? $instanceModel?->user?->tenant_id;
         $userId = $instanceModel?->user_id;
 
-        // Webhook não tem auth: BelongsToTenant não preenche tenant_id. Sem isso o Inbox (escopo por tenant) fica vazio.
+        // Webhook não tem auth: BelongsToTenant não preenche tenant_id. Inbox usa escopo por tenant; instância pode ter tenant só no user.
         $conversation = Conversation::withoutGlobalScopes()->firstOrCreate(
             [
                 'instance_name' => $instanceName,
@@ -339,6 +344,10 @@ class EvolutionWebhookController extends Controller
             'tenant_id' => $tenantId ?? $conversation->tenant_id,
             'user_id' => $userId ?? $conversation->user_id,
         ]);
+
+        if ($tenantId && $instanceModel && $instanceModel->tenant_id === null) {
+            $instanceModel->update(['tenant_id' => $tenantId]);
+        }
 
         $message = Message::withoutGlobalScopes()->firstOrCreate(
             [
@@ -382,6 +391,19 @@ class EvolutionWebhookController extends Controller
             return in_array(strtolower($value), ['1', 'true', 'yes'], true);
         }
         return (bool) $value;
+    }
+
+    /** Tipos Baileys comuns sem campo conversation/text. */
+    private function payloadHasMedia(array $messageContent): bool
+    {
+        $keys = ['imageMessage', 'videoMessage', 'audioMessage', 'stickerMessage', 'documentMessage', 'ptvMessage'];
+        foreach ($keys as $k) {
+            if (! empty($messageContent[$k])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
