@@ -2,7 +2,9 @@
 
 use App\Models\BotInstance;
 use App\Models\Conversation;
+use App\Models\Flow;
 use App\Models\Message;
+use App\Models\Tenant;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 
@@ -77,6 +79,18 @@ Artisan::command('nexxivo:sync-tenant-ids', function () {
             }
         });
     $this->info("messages atualizadas: {$updated}");
+
+    $updated = 0;
+    if (Tenant::query()->count() === 1) {
+        $onlyTid = (int) Tenant::query()->value('id');
+        Flow::query()->whereNull('tenant_id')->chunkById(100, function ($rows) use (&$updated, $onlyTid) {
+            foreach ($rows as $f) {
+                $f->update(['tenant_id' => $onlyTid]);
+                $updated++;
+            }
+        });
+    }
+    $this->info("flows atualizados: {$updated}");
 
     return 0;
 })->purpose('Preenche tenant_id em dados antigos criados pelo webhook');

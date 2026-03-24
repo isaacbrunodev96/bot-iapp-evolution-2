@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Flow;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
 
 class FlowController extends Controller
@@ -125,6 +126,9 @@ class FlowController extends Controller
                 }
             }
 
+            // API sem sessão: BelongsToTenant não preenche tenant_id; a listagem no painel filtra por tenant do admin.
+            $validated['tenant_id'] = $this->resolveTenantIdForFlowWrite();
+
             $flow = Flow::create($validated);
 
             return response()->json([
@@ -235,6 +239,13 @@ class FlowController extends Controller
                 }
             }
 
+            if ($flow->tenant_id === null) {
+                $tid = $this->resolveTenantIdForFlowWrite();
+                if ($tid !== null) {
+                    $validated['tenant_id'] = $tid;
+                }
+            }
+
             $flow->update($validated);
 
             return response()->json([
@@ -260,6 +271,21 @@ class FlowController extends Controller
             'success' => true,
             'message' => 'Fluxo deletado com sucesso',
         ]);
+    }
+
+    /** Tenant do utilizador autenticado ou único tenant na base (painel sem tenant no user). */
+    private function resolveTenantIdForFlowWrite(): ?int
+    {
+        if (auth()->check() && auth()->user()->tenant_id !== null) {
+            return (int) auth()->user()->tenant_id;
+        }
+        if (Tenant::query()->count() === 1) {
+            $v = Tenant::query()->value('id');
+
+            return $v !== null ? (int) $v : null;
+        }
+
+        return null;
     }
 }
 
