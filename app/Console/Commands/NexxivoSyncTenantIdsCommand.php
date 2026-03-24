@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\Flow;
 use App\Models\Message;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Console\Command;
 
 class NexxivoSyncTenantIdsCommand extends Command
@@ -68,14 +69,29 @@ class NexxivoSyncTenantIdsCommand extends Command
         $this->info("messages atualizadas: {$n}");
 
         $n = 0;
-        if (Tenant::query()->count() === 1) {
-            $onlyTid = (int) Tenant::query()->value('id');
-            Flow::query()->whereNull('tenant_id')->chunkById(100, function ($rows) use (&$n, $onlyTid) {
-                foreach ($rows as $f) {
-                    $f->update(['tenant_id' => $onlyTid]);
-                    $n++;
-                }
-            });
+        $tenantCount = Tenant::query()->count();
+        $targetTenantId = null;
+        if ($tenantCount === 1) {
+            $targetTenantId = (int) Tenant::query()->value('id');
+        } elseif ($tenantCount > 1) {
+            $targetTenantId = User::query()->whereNotNull('tenant_id')->orderBy('id')->value('tenant_id');
+            $targetTenantId = $targetTenantId !== null ? (int) $targetTenantId : null;
+        } else {
+            $targetTenantId = User::query()->whereKey(1)->value('tenant_id');
+            $targetTenantId = $targetTenantId !== null ? (int) $targetTenantId : null;
+        }
+
+        if ($targetTenantId !== null) {
+            Flow::query()
+                ->where(function ($q) {
+                    $q->whereNull('tenant_id')->orWhere('tenant_id', '');
+                })
+                ->chunkById(100, function ($rows) use (&$n, $targetTenantId) {
+                    foreach ($rows as $f) {
+                        $f->update(['tenant_id' => $targetTenantId]);
+                        $n++;
+                    }
+                });
         }
         $this->info("flows atualizados: {$n}");
 

@@ -5,6 +5,7 @@ use App\Models\Conversation;
 use App\Models\Flow;
 use App\Models\Message;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 
@@ -81,14 +82,28 @@ Artisan::command('nexxivo:sync-tenant-ids', function () {
     $this->info("messages atualizadas: {$updated}");
 
     $updated = 0;
-    if (Tenant::query()->count() === 1) {
-        $onlyTid = (int) Tenant::query()->value('id');
-        Flow::query()->whereNull('tenant_id')->chunkById(100, function ($rows) use (&$updated, $onlyTid) {
-            foreach ($rows as $f) {
-                $f->update(['tenant_id' => $onlyTid]);
-                $updated++;
-            }
-        });
+    $tc = Tenant::query()->count();
+    $targetTid = null;
+    if ($tc === 1) {
+        $targetTid = (int) Tenant::query()->value('id');
+    } elseif ($tc > 1) {
+        $v = User::query()->whereNotNull('tenant_id')->orderBy('id')->value('tenant_id');
+        $targetTid = $v !== null ? (int) $v : null;
+    } else {
+        $v = User::query()->whereKey(1)->value('tenant_id');
+        $targetTid = $v !== null ? (int) $v : null;
+    }
+    if ($targetTid !== null) {
+        Flow::query()
+            ->where(function ($q) {
+                $q->whereNull('tenant_id')->orWhere('tenant_id', '');
+            })
+            ->chunkById(100, function ($rows) use (&$updated, $targetTid) {
+                foreach ($rows as $f) {
+                    $f->update(['tenant_id' => $targetTid]);
+                    $updated++;
+                }
+            });
     }
     $this->info("flows atualizados: {$updated}");
 

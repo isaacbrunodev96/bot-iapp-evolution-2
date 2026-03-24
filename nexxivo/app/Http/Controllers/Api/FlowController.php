@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Flow;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class FlowController extends Controller
@@ -273,19 +274,29 @@ class FlowController extends Controller
         ]);
     }
 
-    /** Tenant do utilizador autenticado ou único tenant na base (painel sem tenant no user). */
+    /**
+     * Tenant ao gravar fluxo via API (muitas vezes sem sessão): user logado, tabela tenants, ou primeiro user com tenant.
+     */
     private function resolveTenantIdForFlowWrite(): ?int
     {
         if (auth()->check() && auth()->user()->tenant_id !== null) {
             return (int) auth()->user()->tenant_id;
         }
-        if (Tenant::query()->count() === 1) {
+        $tenantCount = Tenant::query()->count();
+        if ($tenantCount === 1) {
             $v = Tenant::query()->value('id');
 
             return $v !== null ? (int) $v : null;
         }
+        if ($tenantCount > 1) {
+            $tid = User::query()->whereNotNull('tenant_id')->orderBy('id')->value('tenant_id');
 
-        return null;
+            return $tid !== null ? (int) $tid : null;
+        }
+
+        $tid = User::query()->whereKey(1)->value('tenant_id');
+
+        return $tid !== null ? (int) $tid : null;
     }
 }
 
