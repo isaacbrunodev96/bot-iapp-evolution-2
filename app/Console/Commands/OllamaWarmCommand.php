@@ -26,7 +26,20 @@ class OllamaWarmCommand extends Command
                 $this->info('Ollama aquecido.');
                 return 0;
             }
-            $this->warn('Ollama respondeu com status: ' . $r->status());
+            $endpoint = rtrim($url, '/') . '/api/generate';
+            $this->warn(sprintf(
+                'Ollama respondeu com status %s (URL: %s, modelo: %s).',
+                $r->status(),
+                $endpoint,
+                $model
+            ));
+            $body = $r->body();
+            if ($body !== '') {
+                $this->line('Resposta: ' . (strlen($body) > 500 ? substr($body, 0, 500) . '…' : $body));
+            }
+            if ($r->status() === 404) {
+                $this->comment('Dica: 404 costuma ser modelo inexistente. Confira `ollama list` e alinhe OLLAMA_MODEL / Configurações de IA.');
+            }
             return 1;
         } catch (\Throwable $e) {
             $this->warn('Ollama warm falhou: ' . $e->getMessage());
