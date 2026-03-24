@@ -16,15 +16,24 @@ use Illuminate\Support\Facades\Log;
 class AIService
 {
     private $ollamaUrl;
+
     private $geminiApiKey;
+
     private $defaultModel;
+
     private $tenantId;
+
+    private bool $ollamaFromEnv;
 
     public function __construct($tenantId = null)
     {
         $this->tenantId = $tenantId;
-        // Buscar configurações do banco de dados, com fallback para .env
-        $raw = AISetting::get('ollama_url', config('services.ai.ollama_url', env('OLLAMA_URL', 'http://localhost:11434')), $this->tenantId);
+        $this->ollamaFromEnv = (bool) config('services.ai.ollama_from_env', false);
+        $configUrl = config('services.ai.ollama_url', 'http://localhost:11434');
+        // Buscar URL Ollama: painel (ai_settings) ou só .env se OLLAMA_FROM_ENV=true
+        $raw = $this->ollamaFromEnv
+            ? $configUrl
+            : AISetting::get('ollama_url', $configUrl, $this->tenantId);
         $this->ollamaUrl = str_replace('http://localhost', 'http://127.0.0.1', $raw);
         $this->geminiApiKey = AISetting::get('gemini_api_key', config('services.ai.gemini_key', env('GEMINI_API_KEY', '')), $this->tenantId);
         $this->defaultModel = AISetting::get('default_provider', config('services.ai.default_model', env('AI_DEFAULT_MODEL', 'ollama')), $this->tenantId);
@@ -60,7 +69,9 @@ class AIService
      */
     private function generateWithOllama(array $context, ?string $model = null): string
     {
-        $defaultModel = AISetting::get('ollama_model', config('services.ai.ollama_model', env('OLLAMA_MODEL', 'llama2')), $this->tenantId);
+        $defaultModel = $this->ollamaFromEnv
+            ? (string) config('services.ai.ollama_model', 'llama2')
+            : AISetting::get('ollama_model', config('services.ai.ollama_model', 'llama2'), $this->tenantId);
         $model = trim((string) ($model ?? $defaultModel));
         if ($model === '') {
             $model = $defaultModel;
