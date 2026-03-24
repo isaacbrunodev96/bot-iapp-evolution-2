@@ -37,6 +37,9 @@ class AIService
         $this->ollamaUrl = str_replace('http://localhost', 'http://127.0.0.1', $raw);
         $this->geminiApiKey = AISetting::get('gemini_api_key', config('services.ai.gemini_key', env('GEMINI_API_KEY', '')), $this->tenantId);
         $this->defaultModel = AISetting::get('default_provider', config('services.ai.default_model', env('AI_DEFAULT_MODEL', 'ollama')), $this->tenantId);
+        if ((bool) config('services.ai.ollama_force_provider', false)) {
+            $this->defaultModel = 'ollama';
+        }
     }
 
     /**
@@ -72,9 +75,14 @@ class AIService
         $defaultModel = $this->ollamaFromEnv
             ? (string) config('services.ai.ollama_model', 'llama2')
             : AISetting::get('ollama_model', config('services.ai.ollama_model', 'llama2'), $this->tenantId);
-        $model = trim((string) ($model ?? $defaultModel));
-        if ($model === '') {
-            $model = $defaultModel;
+        // Com OLLAMA_FROM_ENV, o fluxo pode ainda ter model=llama2 gravado no JSON — ignorar e usar só o .env
+        if ($this->ollamaFromEnv) {
+            $model = trim($defaultModel);
+        } else {
+            $model = trim((string) ($model ?? $defaultModel));
+            if ($model === '') {
+                $model = $defaultModel;
+            }
         }
 
         $messages = $context['messages'] ?? [];

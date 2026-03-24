@@ -42,6 +42,8 @@ return [
     'ai' => [
         /** Se true, URL/modelo Ollama vêm só do .env (ignora ai_settings). Útil em VPS single-tenant. */
         'ollama_from_env' => filter_var(env('OLLAMA_FROM_ENV', false), FILTER_VALIDATE_BOOLEAN),
+        /** Se true, default_provider da IA passa a ser sempre ollama (ignora ai_settings). Útil se o painel ficou em Gemini sem key. */
+        'ollama_force_provider' => filter_var(env('OLLAMA_FORCE_PROVIDER', false), FILTER_VALIDATE_BOOLEAN),
         'default_model' => env('AI_DEFAULT_MODEL', 'ollama'),
         'ollama_url' => env('OLLAMA_URL', 'http://localhost:11434'),
         'ollama_model' => env('OLLAMA_MODEL', 'llama2'),
