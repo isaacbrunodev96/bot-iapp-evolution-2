@@ -41,23 +41,35 @@ class ProcessIncomingMessageJob implements ShouldQueue
             'text_preview' => substr($this->messageText, 0, 80),
         ]);
 
-        $instance = \App\Models\BotInstance::where('instance_name', $this->instanceName)->first();
-        if (!$instance) {
-             Log::error('BotInstance não encontrada para instanciar a IA', ['instance' => $this->instanceName]);
-             return;
+        $instance = \App\Models\BotInstance::where('instance_name', $this->instanceName)
+            ->with('user:id,tenant_id')
+            ->first();
+        if (! $instance) {
+            Log::error('BotInstance não encontrada para instanciar a IA', ['instance' => $this->instanceName]);
+
+            return;
         }
-        $tenantId = $instance->tenant_id;
+        // Mesmo critério que flows/sync: instância pode ter tenant só no user ou único tenant na base.
+        $tenantId = $instance->effectiveTenantId();
 
         $aiService = new AIService($tenantId);
         $elevenLabs = new ElevenLabsService($tenantId);
 
-        $flows = Flow::where('is_active', true)
+        $flows = Flow::query()
+            ->where('is_active', true)
             ->where('tenant_id', $tenantId)
             ->where(function ($q) {
                 $q->where('instance_name', $this->instanceName)->orWhereNull('instance_name');
             })
             ->orderBy('priority', 'desc')
             ->get();
+
+        if ($flows->isEmpty()) {
+            Log::warning('ProcessIncomingMessageJob: nenhum fluxo ativo para este tenant/instância', [
+                'tenant_id' => $tenantId,
+                'instance' => $this->instanceName,
+            ]);
+        }
 
         $executed = false;
         $flowThatFailed = null;
@@ -151,7 +163,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
     private function executeFlow(Flow $flow, EvolutionApiService $evolution, AIService $aiService, ElevenLabsService $elevenLabs): void
     {
         $actions = $flow->actions ?? [];
-        $message = Message::find($this->messageId);
+        $message = Message::withoutGlobalScopes()->find($this->messageId);
         $conversationId = $message?->conversation_id;
 
         foreach ($actions as $action) {
@@ -192,11 +204,13 @@ class ProcessIncomingMessageJob implements ShouldQueue
 
         $history = [];
         if ($useContext && $conversationId) {
-            $messages = Message::where('conversation_id', $conversationId)
+            $messages = Message::withoutGlobalScopes()
+                ->where('conversation_id', $conversationId)
                 ->orderBy('created_at', 'desc')
                 ->limit(10)
                 ->get()
-                ->reverse()->values();
+                ->reverse()
+                ->values();
             foreach ($messages as $msg) {
                 $history[] = [
                     'message' => $msg->message,
@@ -222,7 +236,8 @@ class ProcessIncomingMessageJob implements ShouldQueue
                     $evolution->sendText($this->instanceName, $this->contact, $response);
                 }
                 if ($conversationId) {
-                    Message::create([
+                    $convTenant = Conversation::withoutGlobalScopes()->whereKey($conversationId)->value('tenant_id');
+                    Message::withoutGlobalScopes()->create([
                         'conversation_id' => $conversationId,
                         'instance_name' => $this->instanceName,
                         'message_id' => 'out_' . uniqid('', true),
@@ -231,11 +246,17 @@ class ProcessIncomingMessageJob implements ShouldQueue
                         'message' => $response,
                         'direction' => 'outgoing',
                         'timestamp' => now(),
+                        'tenant_id' => $convTenant,
                     ]);
                 }
             }
         } catch (\Throwable $e) {
-            Log::warning('AI response failed in flow', ['error' => $e->getMessage()]);
+            Log::error('AI response failed in flow', [
+                'error' => $e->getMessage(),
+                'instance' => $this->instanceName,
+                'contact' => $this->contact,
+                'provider' => $action['provider'] ?? null,
+            ]);
             $fallback = $action['error_message'] ?? 'Desculpe, não consegui processar. Tente de novo.';
             if ($fallback !== '') {
                 $evolution->sendText($this->instanceName, $this->contact, $fallback);
