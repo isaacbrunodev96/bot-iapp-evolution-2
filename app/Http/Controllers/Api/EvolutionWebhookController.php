@@ -276,11 +276,7 @@ class EvolutionWebhookController extends Controller
     private function processOneMessage(string $instanceName, array $data): void
     {
         $key = $data['key'] ?? [];
-        $fromMe = $this->normalizeBool($key['fromMe'] ?? $data['fromMe'] ?? false);
-        if ($fromMe) {
-            Log::debug('Evolution MESSAGES_UPSERT ignorado (fromMe=true)', ['instance' => $instanceName]);
-            return;
-        }
+        $isOutgoing = $this->normalizeBool($key['fromMe'] ?? $data['fromMe'] ?? false);
 
         $remoteJid = (string) ($key['remoteJid'] ?? $data['remoteJid'] ?? $data['keyRemoteJid'] ?? '');
         if ($remoteJid === '') {
@@ -374,16 +370,22 @@ class EvolutionWebhookController extends Controller
                 'from' => $remoteJid,
                 'to' => null,
                 'message' => $text,
-                'direction' => 'incoming',
+                'direction' => $isOutgoing ? 'outgoing' : 'incoming',
                 'raw_data' => $data,
                 'timestamp' => \Carbon\Carbon::createFromTimestamp($messageTimestamp),
                 'tenant_id' => $tenantId,
             ]
         );
 
-        if ($message->wasRecentlyCreated) {
+        if ($message->wasRecentlyCreated && ! $isOutgoing) {
             ProcessIncomingMessageJob::dispatch($instanceName, $contact, $remoteJid, $text, $message->id);
             Log::info('Evolution mensagem recebida e salva', [
+                'instance' => $instanceName,
+                'contact' => $contact,
+                'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
+            ]);
+        } elseif ($message->wasRecentlyCreated && $isOutgoing) {
+            Log::info('Evolution mensagem enviada gravada (fromMe)', [
                 'instance' => $instanceName,
                 'contact' => $contact,
                 'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,

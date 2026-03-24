@@ -139,11 +139,12 @@ class BotController extends Controller
 
     private function persistOutgoingMessage(array $validated): void
     {
-        $conversation = \App\Models\Conversation::where('instance_name', $validated['instance_name'])
+        $conversation = \App\Models\Conversation::withoutGlobalScopes()
+            ->where('instance_name', $validated['instance_name'])
             ->where('contact', $validated['contact'])
             ->first();
         if ($conversation) {
-            $msg = \App\Models\Message::create([
+            $msg = \App\Models\Message::withoutGlobalScopes()->create([
                 'conversation_id' => $conversation->id,
                 'instance_name' => $validated['instance_name'],
                 'message_id' => 'ev_' . uniqid(),
@@ -152,6 +153,7 @@ class BotController extends Controller
                 'message' => $validated['message'],
                 'direction' => 'outgoing',
                 'timestamp' => now(),
+                'tenant_id' => $conversation->tenant_id,
             ]);
             $conversation->update(['last_message_at' => now()]);
 
