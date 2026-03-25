@@ -161,22 +161,58 @@ class AIService
     {
         $temp = (float) config('services.ai.ollama_chat_temperature', 0.32);
         $topP = (float) config('services.ai.ollama_chat_top_p', 0.68);
-        $payload = [
-            'model' => $model,
-            'messages' => $messages,
-            'stream' => false,
-            'options' => [
-                'temperature' => max(0.0, min(1.0, $temp)),
-                'top_p' => max(0.0, min(1.0, $topP)),
-            ],
-        ];
-        $response = Http::timeout(180)->post($url, $payload);
-        if (! $response->successful()) {
-            throw new \Exception('Ollama (fallback): ' . ($response->body() ?: 'erro HTTP ' . $response->status()));
+        $attempts = 2;
+        for ($i = 0; $i < $attempts; $i++) {
+            $payload = [
+                'model' => $model,
+                'messages' => $messages,
+                'stream' => false,
+                // Mantém o modelo quente para reduzir latência e "vazios" em carga.
+                'keep_alive' => '10m',
+                'options' => [
+                    'temperature' => max(0.0, min(1.0, $temp)),
+                    'top_p' => max(0.0, min(1.0, $topP)),
+                ],
+            ];
+            $response = Http::timeout(240)->post($url, $payload);
+            $body = (string) $response->body();
+
+            if (! $response->successful()) {
+                throw new \Exception('Ollama (fallback): ' . ($body ?: 'erro HTTP ' . $response->status()));
+            }
+
+            $data = $response->json();
+            if (! is_array($data)) {
+                $decoded = json_decode($body, true);
+                $data = is_array($decoded) ? $decoded : [];
+            }
+
+            $text = trim((string) ($data['message']['content'] ?? ''));
+            if ($text !== '') {
+                return $text;
+            }
+
+            // Última tentativa: tentar extrair via regex caso o JSON esteja estranho.
+            if ($body !== '' && preg_match('/"content"\s*:\s*"((?:\\\\.|[^"\\\\])*)"/u', $body, $m)) {
+                $extracted = stripcslashes($m[1]);
+                $extracted = trim((string) $extracted);
+                if ($extracted !== '') {
+                    return $extracted;
+                }
+            }
+
+            Log::warning('Ollama no-stream retornou vazio', [
+                'model' => $model,
+                'attempt' => $i + 1,
+                'status' => $response->status(),
+                'body_preview' => mb_substr($body, 0, 600),
+            ]);
+
+            // Retry curto (modelo pode estar carregando / swap).
+            usleep(250000);
         }
-        $data = $response->json();
-        $text = $data['message']['content'] ?? '';
-        return trim((string) $text);
+
+        return '';
     }
 
     /**
