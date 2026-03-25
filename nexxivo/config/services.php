@@ -66,6 +66,14 @@ return [
         'apikey' => env('EVOLUTION_API_KEY', ''),
         'timeout' => (int) env('EVOLUTION_API_TIMEOUT', 30),
         'webhook_url' => env('EVOLUTION_WEBHOOK_URL'), // URL que a Evolution (Docker) usa para chamar o Laravel. Se vazio, usa APP_URL.
+        'dispatch_incoming_sync' => filter_var(
+            env(
+                'EVOLUTION_DISPATCH_INCOMING_SYNC',
+                (env('DB_CONNECTION') === 'sqlite' && env('QUEUE_CONNECTION', 'database') === 'database') ? '1' : '0'
+            ),
+            FILTER_VALIDATE_BOOLEAN
+        ),
+        'no_flow_reply' => env('EVOLUTION_NO_FLOW_REPLY', 'Oi! No momento não há fluxo ativo para esta mensagem. No painel, crie um fluxo com gatilho "Qualquer mensagem" (catch_all).'),
     ],
 
 ];

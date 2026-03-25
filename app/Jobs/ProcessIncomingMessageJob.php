@@ -115,6 +115,16 @@ class ProcessIncomingMessageJob implements ShouldQueue
             Log::info('Nenhum fluxo correspondeu à mensagem', [
                 'message_preview' => strlen($this->messageText) > 60 ? substr($this->messageText, 0, 60) . '...' : $this->messageText,
             ]);
+            $noFlowReply = trim((string) config('services.evolution.no_flow_reply'));
+            if ($noFlowReply !== '') {
+                try {
+                    $evolution->sendText($this->instanceName, $this->contact, $noFlowReply);
+                } catch (\Throwable $e) {
+                    Log::error('ProcessIncomingMessageJob: falha ao enviar mensagem de nenhum fluxo', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
     }
 

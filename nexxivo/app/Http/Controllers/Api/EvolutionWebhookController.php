@@ -378,12 +378,21 @@ class EvolutionWebhookController extends Controller
         );
 
         if ($message->wasRecentlyCreated && ! $isOutgoing) {
-            ProcessIncomingMessageJob::dispatch($instanceName, $contact, $remoteJid, $text, $message->id);
-            Log::info('Evolution mensagem recebida e salva', [
-                'instance' => $instanceName,
-                'contact' => $contact,
-                'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
-            ]);
+            if (config('services.evolution.dispatch_incoming_sync')) {
+                ProcessIncomingMessageJob::dispatchSync($instanceName, $contact, $remoteJid, $text, $message->id);
+                Log::info('Evolution mensagem recebida e processada em sync (sem fila)', [
+                    'instance' => $instanceName,
+                    'contact' => $contact,
+                    'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
+                ]);
+            } else {
+                ProcessIncomingMessageJob::dispatch($instanceName, $contact, $remoteJid, $text, $message->id);
+                Log::info('Evolution mensagem recebida e salva', [
+                    'instance' => $instanceName,
+                    'contact' => $contact,
+                    'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
+                ]);
+            }
         } elseif ($message->wasRecentlyCreated && $isOutgoing) {
             Log::info('Evolution mensagem enviada gravada (fromMe)', [
                 'instance' => $instanceName,
