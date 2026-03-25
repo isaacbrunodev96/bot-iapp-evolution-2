@@ -97,6 +97,7 @@ class AIService
 
         $temp = (float) config('services.ai.ollama_chat_temperature', 0.32);
         $topP = (float) config('services.ai.ollama_chat_top_p', 0.68);
+        $numPredict = (int) config('services.ai.ollama_num_predict', 160);
         Log::info('Payload enviado ao Ollama:', ['messages' => $messages]);
         $url = rtrim($this->ollamaUrl, '/') . '/api/chat';
         $responseText = '';
@@ -108,6 +109,7 @@ class AIService
                 'options' => [
                     'temperature' => max(0.0, min(1.0, $temp)),
                     'top_p' => max(0.0, min(1.0, $topP)),
+                    'num_predict' => max(16, min(512, $numPredict)),
                 ],
             ];
             $payloadJson = json_encode($payload);
@@ -172,6 +174,7 @@ class AIService
                 'options' => [
                     'temperature' => max(0.0, min(1.0, $temp)),
                     'top_p' => max(0.0, min(1.0, $topP)),
+                    'num_predict' => max(16, min(512, $numPredict)),
                 ],
             ];
             $response = Http::timeout(240)->post($url, $payload);

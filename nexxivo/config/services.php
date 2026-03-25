@@ -51,6 +51,8 @@ return [
         'ollama_use_stream' => filter_var(env('OLLAMA_USE_STREAM', false), FILTER_VALIDATE_BOOLEAN),
         'ollama_chat_temperature' => (float) env('OLLAMA_CHAT_TEMPERATURE', 0.32),
         'ollama_chat_top_p' => (float) env('OLLAMA_CHAT_TOP_P', 0.68),
+        /** Quantidade máxima de tokens gerados (evita respostas vazias / eval_count muito baixo). */
+        'ollama_num_predict' => (int) env('OLLAMA_NUM_PREDICT', 160),
         'gemini_key' => env('GEMINI_API_KEY', ''),
         'gemini_model' => env('GEMINI_MODEL', 'gemini-pro'),
         /** Tamanho máximo do texto do fluxo no system (modelos pequenos copiam menos se for mais curto). */
