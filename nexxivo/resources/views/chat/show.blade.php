@@ -67,26 +67,26 @@
 
         {{-- Compositor --}}
         <div class="shrink-0 p-3 sm:p-4 border-t border-[#2A2A35] bg-[#16161D]">
-            <form id="message-form" class="flex gap-2 sm:gap-3 items-end">
+            <form id="message-form" class="flex gap-2 sm:gap-3 items-center">
                 <label class="sr-only" for="message-input">Mensagem</label>
-                <div class="flex-1 rounded-xl border border-[#2A2A35] bg-[#0F0F13] focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
+                <div class="flex-1 flex items-center min-h-12 rounded-xl border border-[#2A2A35] bg-[#0F0F13] focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
                     <input
                         type="text"
                         id="message-input"
                         name="message"
                         placeholder="Escreva uma mensagem…"
                         autocomplete="off"
-                        class="w-full bg-transparent text-gray-100 placeholder:text-gray-500 px-4 py-3.5 text-[15px] rounded-xl focus:outline-none"
+                        class="w-full min-h-12 h-12 box-border bg-transparent text-gray-100 placeholder:text-gray-500 px-4 text-[15px] leading-normal rounded-xl border-0 focus:outline-none focus:ring-0"
                         required
                     >
                 </div>
                 <button
                     type="submit"
                     id="send-button"
-                    class="shrink-0 min-w-[3.25rem] sm:min-w-0 px-4 sm:px-6 py-3.5 rounded-xl bg-neon-gradient text-white font-semibold text-sm shadow-lg shadow-purple-900/30 hover:opacity-95 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-[#16161D] disabled:opacity-45 disabled:cursor-not-allowed disabled:active:scale-100 transition-all inline-flex items-center justify-center gap-2"
+                    class="shrink-0 h-12 min-h-12 min-w-12 sm:min-w-0 px-4 sm:px-6 rounded-xl bg-neon-gradient text-white font-semibold text-sm shadow-lg shadow-purple-900/30 hover:opacity-95 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-[#16161D] disabled:opacity-45 disabled:cursor-not-allowed disabled:active:scale-100 transition-all inline-flex items-center justify-center gap-2"
                 >
                     <span class="hidden sm:inline">Enviar</span>
-                    <i class="fas fa-paper-plane" aria-hidden="true"></i>
+                    <i class="fas fa-paper-plane text-[15px] leading-none shrink-0" aria-hidden="true"></i>
                 </button>
             </form>
         </div>
