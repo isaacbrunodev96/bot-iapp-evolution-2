@@ -94,6 +94,15 @@
                         </div>
                         @endif
                     </div>
+
+                    <button
+                        type="button"
+                        title="Apagar conversa"
+                        class="shrink-0 p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-200 transition inline-flex items-center justify-center"
+                        onclick="event.preventDefault(); event.stopPropagation(); deleteConversation({{ $conversation->id }});"
+                    >
+                        <i class="fas fa-trash-alt text-sm" aria-hidden="true"></i>
+                    </button>
                 </div>
             </a>
             @empty
@@ -114,4 +123,20 @@
         @endif
     </div>
 </div>
+<script>
+async function deleteConversation(id) {
+    if (!confirm('Deseja apagar esta conversa permanentemente?')) return;
+    try {
+        const response = await axios.delete(`/api/conversations/${id}`);
+        if (response.data && response.data.success) {
+            location.reload();
+        } else {
+            alert(response.data?.message || 'Falha ao apagar conversa.');
+        }
+    } catch (error) {
+        console.error('Erro ao apagar conversa:', error);
+        alert('Falha na comunicação com o servidor.');
+    }
+}
+</script>
 @endsection

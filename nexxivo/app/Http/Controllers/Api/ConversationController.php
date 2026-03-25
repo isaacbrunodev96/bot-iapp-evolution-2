@@ -133,5 +133,35 @@ class ConversationController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Apaga uma conversa específica (mensagens + conversa).
+     */
+    public function destroy($id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $conversation = Conversation::findOrFail($id);
+            $conversationId = $conversation->id;
+
+            Message::where('conversation_id', $conversationId)->delete();
+            $conversation->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Conversa apagada',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao apagar conversa: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }
 
