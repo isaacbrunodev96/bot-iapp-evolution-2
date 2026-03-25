@@ -96,7 +96,7 @@ class AIService
             'model' => $model,
             'messages' => $messages,
             'stream' => true,
-            'options' => ['temperature' => 0.1, 'top_p' => 0.5],
+            'options' => ['temperature' => 0.28, 'top_p' => 0.65],
         ];
         Log::info('Payload enviado ao Ollama:', ['messages' => $messages]);
         $url = rtrim($this->ollamaUrl, '/') . '/api/chat';
@@ -155,7 +155,7 @@ class AIService
             'model' => $model,
             'messages' => $messages,
             'stream' => false,
-            'options' => ['temperature' => 0.1, 'top_p' => 0.5],
+            'options' => ['temperature' => 0.28, 'top_p' => 0.65],
         ];
         $response = Http::timeout(180)->post($url, $payload);
         if (! $response->successful()) {
@@ -231,16 +231,82 @@ class AIService
     }
 
     /**
+     * Modelos pequenos (ex.: llama3.2) às vezes devolvem o roteiro comercial inteiro (Persona/Objetivos…).
+     */
+    private function extractReplyIfModelDumpedInstructions(string $text): ?string
+    {
+        $t = trim($text);
+        if (mb_strlen($t) < 180) {
+            return null;
+        }
+        $lower = mb_strtolower($t);
+        $nonEmptyLines = array_values(array_filter(preg_split('/\r?\n/', $t), fn ($l) => trim($l) !== ''));
+        $lineCount = count($nonEmptyLines);
+
+        $hasPersona = str_contains($lower, 'persona') || str_contains($lower, 'personagem');
+        $hasObjetivos = str_contains($lower, 'objetivo');
+        $hasRegras = str_contains($lower, 'regra');
+        $hasFormato = str_contains($lower, 'formato');
+        $looksLikeScript = ($hasPersona && $hasObjetivos && $hasRegras)
+            || ($hasObjetivos && $hasFormato && $hasRegras && $lineCount >= 6)
+            || ($lineCount >= 8 && $hasObjetivos && $hasRegras && substr_count($t, ':') >= 8);
+
+        if (! $looksLikeScript) {
+            return null;
+        }
+
+        $paragraphs = preg_split('/\n\s*\n/', $t);
+        $paragraphs = array_values(array_filter(array_map('trim', $paragraphs)));
+
+        for ($i = count($paragraphs) - 1; $i >= 0; $i--) {
+            $p = $paragraphs[$i];
+            $len = mb_strlen($p);
+            if ($len < 15 || $len > 2200) {
+                continue;
+            }
+            $pl = mb_strtolower($p);
+            if (preg_match('/^\*{0,2}\s*(persona|objetivos|regras|formato|lógica)\b/ui', $p)) {
+                continue;
+            }
+            if (str_contains($pl, 'objetivo') && str_contains($pl, 'regra') && $len > 350) {
+                continue;
+            }
+            if (substr_count($p, ':') >= 6 && $len > 400) {
+                continue;
+            }
+            if (preg_match('/^(\d+\.)\s+.+\n(\d+\.)\s+/u', $p)) {
+                continue;
+            }
+
+            return $p;
+        }
+
+        Log::warning('AIService: resposta parecia roteiro completo; usando saudação curta', [
+            'chars' => mb_strlen($t),
+            'lines' => $lineCount,
+        ]);
+
+        return 'Olá! Tudo bem? Em que posso ajudar?';
+    }
+
+    /**
      * Remove da resposta trechos que parecem vazamento de prompt (regras, exemplos).
      */
     private function stripLeakedPromptFromResponse(string $text): string
     {
+        $extracted = $this->extractReplyIfModelDumpedInstructions($text);
+        if ($extracted !== null) {
+            return $extracted;
+        }
+
         $lower = mb_strtolower($text);
         $markers = [
             'regras de ouro', 'as regras de ouro', 'golden rules', 'aqui está um exemplo',
             'exemplo de como você pode responder', 'exemplo de como', 'como você pode responder',
             'nunca ignore', 'nunca repita', 'nunca mostre', '[crítico]', 'sua resposta deve conter apenas',
             'aqui está o roteiro', 'roteiro para você', 'aguarde resposta', 'estado 1', 'estado 2', 'pare aqui',
+            '**persona**', 'persona:', 'objetivos:', 'formato:', 'tom desejado',
+            'você é um assistente', 'atendente comercial profissional', 'call to action',
         ];
         $hasLeak = false;
         foreach ($markers as $m) {
@@ -394,7 +460,7 @@ class AIService
     {
         $fixedRules = $this->getFixedSystemRulesForChat();
         $contextFromFlow = $this->stripRoteiroFromFlowPrompt($promptTemplate);
-        $outputOnlyRule = "\n\n[CRÍTICO] Sua resposta deve conter APENAS a mensagem que você envia ao cliente. NUNCA repita, cite ou liste as regras. NUNCA mostre títulos como Regras de ouro, ESTADO ou Exemplo. Uma única mensagem natural.";
+        $outputOnlyRule = "\n\n[CRÍTICO] Sua resposta deve conter APENAS a mensagem que você envia ao cliente. NUNCA repita, cite ou liste Persona, Objetivos, Regras, Formato ou Lógica. NUNCA copie o roteiro acima. Para \"oi\"/saudação, responda em 1–2 frases curtas. Uma única mensagem natural.";
         $system = $fixedRules . ($contextFromFlow !== '' ? "Contexto útil (use apenas para orientar suas respostas, não repita isso ao cliente):\n" . $contextFromFlow . "\n\n" : '') . $outputOnlyRule;
         $userPrompt = "Cliente: " . trim($userMessage) . "\n\nLaura:";
         if (!empty($conversationHistory)) {
