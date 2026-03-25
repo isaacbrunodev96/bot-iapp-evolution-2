@@ -229,6 +229,16 @@ class ProcessIncomingMessageJob implements ShouldQueue
             $response = $aiService->generateResponse($prompt, $this->messageText, $provider, $model, $history);
             $response = trim($response);
             $response = $this->stripResponseIfEchoesFlowDescription($response, $flow, $action);
+            if ($response === '') {
+                Log::warning('ProcessIncomingMessageJob: resposta da IA vazia após sanitização — usando fallback', [
+                    'flow_id' => $flow->id,
+                    'instance' => $this->instanceName,
+                ]);
+                $response = trim((string) ($action['error_message'] ?? ''));
+                if ($response === '') {
+                    $response = 'Desculpe, não consegui formular uma resposta agora. Pode repetir em uma frase?';
+                }
+            }
             if ($response !== '') {
                 $sendAudio = ! empty($action['send_audio']) || ($action['response_type'] ?? '') === 'audio';
                 if ($sendAudio) {
