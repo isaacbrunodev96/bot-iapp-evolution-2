@@ -143,7 +143,7 @@ class AIService
         if ($responseText === '') {
             throw new \Exception('Resposta vazia recebida do Ollama.');
         }
-        return $this->sanitizeResponseForChat($responseText);
+        return $this->sanitizeResponseForChat($responseText, (string) ($context['raw_user_message'] ?? ''));
     }
 
     /**
@@ -227,7 +227,7 @@ class AIService
             throw new \Exception("Resposta vazia recebida do Gemini");
         }
 
-        return $this->sanitizeResponseForChat($responseText);
+        return $this->sanitizeResponseForChat($responseText, (string) ($context['raw_user_message'] ?? ''));
     }
 
     /**
@@ -247,12 +247,30 @@ class AIService
         $hasObjetivos = str_contains($lower, 'objetivo');
         $hasRegras = str_contains($lower, 'regra');
         $hasFormato = str_contains($lower, 'formato');
+        $colons = substr_count($t, ':');
+        // Texto colado num parágrafo só (poucas quebras de linha) — comum no llama3.2
+        $denseScript = mb_strlen($t) > 550
+            && $colons >= 5
+            && (
+                (str_contains($lower, 'assistente comercial') && $hasObjetivos)
+                || ($hasPersona && $hasObjetivos && $hasRegras)
+                || ($hasObjetivos && $hasFormato && $colons >= 7)
+            );
         $looksLikeScript = ($hasPersona && $hasObjetivos && $hasRegras)
             || ($hasObjetivos && $hasFormato && $hasRegras && $lineCount >= 6)
-            || ($lineCount >= 8 && $hasObjetivos && $hasRegras && substr_count($t, ':') >= 8);
+            || ($lineCount >= 8 && $hasObjetivos && $hasRegras && $colons >= 8)
+            || $denseScript;
 
         if (! $looksLikeScript) {
             return null;
+        }
+
+        // Bloco único: tentar isolar frase de exemplo (tom desejado)
+        if ($lineCount <= 4 && preg_match('/Olá!\s*Tudo\s*bem\?[^\n]{0,200}/ui', $t, $m)) {
+            return trim($m[0]);
+        }
+        if ($lineCount <= 4 && preg_match('/["\x{201C}](Olá[^"\x{201D}]{8,250})["\x{201D}]/u', $t, $m)) {
+            return trim($m[1]);
         }
 
         $paragraphs = preg_split('/\n\s*\n/', $t);
@@ -332,16 +350,22 @@ class AIService
             if (preg_match('/^\d+\.\s/u', $t)) continue;
             if (preg_match('/^(regras|as regras|exemplo|aqui está|golden)/ui', $t)) continue;
             if (strlen($t) > 20 && strlen($t) < 1500) {
+                $tl = mb_strtolower($t);
+                if (str_contains($tl, 'persona') && str_contains($tl, 'objetivo')) {
+                    continue;
+                }
+
                 return $t;
             }
         }
+
         return $text;
     }
 
     /**
      * Remove da resposta: instruções de cena (**smiles**), placeholders {img002}, linhas internas (ESTADO X:, PARE AQUI).
      */
-    private function sanitizeResponseForChat(string $text): string
+    private function sanitizeResponseForChat(string $text, string $userMessage = ''): string
     {
         $text = trim($text);
         if ($text === '') return $text;
@@ -367,7 +391,42 @@ class AIService
         $text = implode("\n", $out);
         $text = trim($text);
         $text = $this->replaceEnglishWithPortuguese($text);
-        return trim($text);
+
+        return trim($this->finalizeHumanWhatsAppReply($text, $userMessage));
+    }
+
+    /**
+     * Última defesa: se ainda parecer roteiro, extrai saudação curta ou resposta fixa humana.
+     */
+    private function finalizeHumanWhatsAppReply(string $text, string $userMessage): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return $text;
+        }
+        if (mb_strlen($text) < 320) {
+            return $text;
+        }
+        $l = mb_strtolower($text);
+        $scriptLike = (bool) preg_match(
+            '/persona|objetivos?\b|regras?\b|formato\b|lógica|tom\s+desejado|assistente\s+comercial|call\s+to\s+action|seu\s+objetivo\s+é/ui',
+            $l
+        );
+        if (! $scriptLike) {
+            return $text;
+        }
+        if (preg_match('/Olá!\s*Tudo\s*bem\?[^\n]{0,180}/ui', $text, $m)) {
+            return trim($m[0]);
+        }
+        if (preg_match('/^Oi[!,.]?\s+.+/ui', $text, $m) && mb_strlen($m[0]) < 280) {
+            return trim($m[0]);
+        }
+        $u = mb_strtolower(trim($userMessage));
+        if (preg_match('/^(oi|ol[aá]|opa|hey|bom dia|boa tarde|boa noite)\b/u', $u)) {
+            return 'Oi! Tudo bem? Em que posso ajudar?';
+        }
+
+        return 'Obrigado pelo contato! Em que posso ajudar?';
     }
 
     private function replaceEnglishWithPortuguese(string $text): string
@@ -461,6 +520,11 @@ class AIService
     {
         $fixedRules = $this->getFixedSystemRulesForChat();
         $contextFromFlow = $this->stripRoteiroFromFlowPrompt($promptTemplate);
+        $maxCtx = (int) config('services.ai.max_flow_context_chars', 2000);
+        if ($contextFromFlow !== '' && mb_strlen($contextFromFlow) > $maxCtx) {
+            $contextFromFlow = mb_substr($contextFromFlow, 0, $maxCtx)
+                . "\n[...trecho omitido: use só a ideia, tom comercial amigável, mensagem CURTA ao cliente, sem listar regras.]";
+        }
         $outputOnlyRule = "\n\n[CRÍTICO] Sua resposta deve conter APENAS a mensagem que você envia ao cliente. NUNCA repita, cite ou liste Persona, Objetivos, Regras, Formato ou Lógica. NUNCA copie o roteiro acima. Para \"oi\"/saudação, responda em 1–2 frases curtas. Uma única mensagem natural.";
         $system = $fixedRules . ($contextFromFlow !== '' ? "Contexto útil (use apenas para orientar suas respostas, não repita isso ao cliente):\n" . $contextFromFlow . "\n\n" : '') . $outputOnlyRule;
         $userPrompt = "Cliente: " . trim($userMessage) . "\n\nLaura:";
@@ -484,7 +548,13 @@ class AIService
             $messages[] = ['role' => $role, 'content' => $msgText];
         }
         $messages[] = ['role' => 'user', 'content' => trim($userMessage)];
-        return ['system' => $system, 'prompt' => $userPrompt, 'messages' => $messages];
+
+        return [
+            'system' => $system,
+            'prompt' => $userPrompt,
+            'messages' => $messages,
+            'raw_user_message' => trim($userMessage),
+        ];
     }
 
     /**
