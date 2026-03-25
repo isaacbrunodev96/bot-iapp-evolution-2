@@ -125,6 +125,7 @@ class EvolutionApiService
 
     public function sendText(string $instanceName, string $number, string $text): array
     {
+        $text = $this->guardOutgoingText($text, $instanceName);
         $number = preg_replace('/[^\d]/', '', $number);
         if (strlen($number) >= 10 && ! str_starts_with($number, '55')) {
             $number = '55' . $number;
@@ -145,6 +146,36 @@ class EvolutionApiService
         }
 
         return $response->json();
+    }
+
+    /**
+     * Última linha de defesa: nunca deixar sair "roteiro/prompt" para o cliente.
+     */
+    private function guardOutgoingText(string $text, string $instanceName): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return $text;
+        }
+
+        $l = mb_strtolower($text);
+        $l = str_replace("\u{00A0}", ' ', $l);
+        $l = preg_replace('/\s+/u', ' ', $l);
+
+        $looksLikePromptDump =
+            (str_contains($l, 'você é um assistente') || str_contains($l, 'assistente comercial'))
+            && (str_contains($l, 'regras de resposta') || str_contains($l, 'formato da resposta') || str_contains($l, 'seu objetivo'));
+
+        if ($looksLikePromptDump) {
+            Log::warning('EvolutionApiService: bloqueado envio de roteiro/prompt ao cliente', [
+                'instance' => $instanceName,
+                'text_preview' => mb_substr($text, 0, 120),
+            ]);
+
+            return 'Oi! Tudo bem? Em que posso ajudar?';
+        }
+
+        return $text;
     }
 
     /**
