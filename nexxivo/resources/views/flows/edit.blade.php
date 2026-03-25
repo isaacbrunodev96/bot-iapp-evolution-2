@@ -230,10 +230,22 @@ function addAction() {
     actionCount++;
 }
 
-function updateActionType(select) {
-    const actionDiv = select.closest('.border');
-    const contentDiv = actionDiv.querySelector('[id^="action-content-"]');
-    const actionIndex = select.name.match(/\[(\d+)\]/)[1];
+function updateActionType(arg) {
+    const select = (typeof arg === 'string' || typeof arg === 'number')
+        ? document.getElementById(`action-type-${arg}`)
+        : arg;
+    if (!select) return;
+
+    const actionIndex = (select.name && select.name.match(/\[(\d+)\]/))
+        ? select.name.match(/\[(\d+)\]/)[1]
+        : (select.id && select.id.match(/action-type-(\d+)/) ? select.id.match(/action-type-(\d+)/)[1] : null);
+    if (actionIndex === null) return;
+
+    const actionDiv = select.closest('.border') || select.closest('[id^="action-"]');
+    const contentDiv = (actionDiv && actionDiv.querySelector('[id^="action-content-"]'))
+        ? actionDiv.querySelector('[id^="action-content-"]')
+        : document.getElementById(`action-content-${actionIndex}`);
+    if (!contentDiv) return;
     
     if (select.value === 'send_message') {
         contentDiv.innerHTML = `
