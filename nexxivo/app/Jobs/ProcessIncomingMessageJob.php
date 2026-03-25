@@ -228,6 +228,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
         try {
             $response = $aiService->generateResponse($prompt, $this->messageText, $provider, $model, $history);
             $response = trim($response);
+            $response = $this->stripResponseIfEchoesFlowDescription($response, $flow);
             if ($response !== '') {
                 $sendAudio = ! empty($action['send_audio']) || ($action['response_type'] ?? '') === 'audio';
                 if ($sendAudio) {
@@ -340,5 +341,74 @@ class ProcessIncomingMessageJob implements ShouldQueue
         $header = "[Orientação interna — define persona, tom e limites. Isto NÃO é mensagem para o cliente: não copie, não cite, não enumere ao cliente.]\n";
 
         return $header . $desc . "\n\n---\n\n[Tarefa]\n" . $task;
+    }
+
+    /**
+     * Modelos pequenos (ex. llama3.2:3b) costumam copiar a descrição do fluxo para a resposta.
+     * Comparação direta com o texto guardado no painel — não depende só de heurísticas na AIService.
+     *
+     * @see https://github.com/ollama/ollama/issues/1103 (modelos a repetir contexto)
+     * @see https://docs.ollama.com/api/chat (roles system / user na API)
+     */
+    private function stripResponseIfEchoesFlowDescription(string $response, Flow $flow): string
+    {
+        $desc = trim((string) ($flow->description ?? ''));
+        if ($desc === '' || $response === '') {
+            return $response;
+        }
+
+        $norm = static function (string $s): string {
+            $s = preg_replace('/\s+/u', ' ', trim($s));
+
+            return $s ?? '';
+        };
+
+        $d = $norm($desc);
+        $r = $norm($response);
+        if (mb_strlen($d) < 35) {
+            return $response;
+        }
+
+        $needles = [];
+        $needles[] = mb_substr($d, 0, min(72, mb_strlen($d)));
+        if (mb_strlen($d) > 100) {
+            $needles[] = mb_substr($d, 40, min(72, mb_strlen($d) - 40));
+        }
+        if (preg_match('/você\s+é\s+um\s+.{30,120}/ui', $d, $m)) {
+            $needles[] = $norm($m[0]);
+        }
+        if (str_contains(mb_strtolower($d), 'regras de resposta')) {
+            $needles[] = 'Regras de resposta';
+        }
+
+        foreach (array_unique(array_filter($needles)) as $needle) {
+            if (mb_strlen($needle) < 28) {
+                continue;
+            }
+            if (mb_stripos($r, $needle) !== false) {
+                Log::warning('ProcessIncomingMessageJob: resposta contém trecho da descrição do fluxo — substituída', [
+                    'flow_id' => $flow->id,
+                    'needle_len' => mb_strlen($needle),
+                ]);
+
+                return 'Olá! Tudo bem? Em que posso ajudar?';
+            }
+        }
+
+        $lenD = mb_strlen($d);
+        $lenR = mb_strlen($r);
+        if ($lenD > 120 && $lenR > 150 && $lenR >= (int) ($lenD * 0.55) && $lenD < 4000) {
+            similar_text(mb_strtolower($r), mb_strtolower($d), $pct);
+            if ($pct > 42.0) {
+                Log::warning('ProcessIncomingMessageJob: resposta muito similar à descrição do fluxo', [
+                    'flow_id' => $flow->id,
+                    'similarity_pct' => $pct,
+                ]);
+
+                return 'Olá! Tudo bem? Em que posso ajudar?';
+            }
+        }
+
+        return $response;
     }
 }

@@ -50,7 +50,7 @@ return [
         'gemini_key' => env('GEMINI_API_KEY', ''),
         'gemini_model' => env('GEMINI_MODEL', 'gemini-pro'),
         /** Tamanho máximo do texto do fluxo no system (modelos pequenos copiam menos se for mais curto). */
-        'max_flow_context_chars' => max(500, (int) env('AI_MAX_FLOW_CONTEXT_CHARS', 2000)),
+        'max_flow_context_chars' => max(400, (int) env('AI_MAX_FLOW_CONTEXT_CHARS', 900)),
     ],
 
     'elevenlabs' => [
