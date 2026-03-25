@@ -86,7 +86,7 @@
                     @foreach($flow->actions as $index => $action)
                     <div class="border border-gray-300 rounded-lg p-4 space-y-3">
                         <div class="flex gap-2 items-center">
-                            <select name="actions[{{ $index }}][type]" id="action-type-{{ $index }}" class="px-3 py-2 border border-gray-300 rounded-lg" onchange="updateActionType({{ $index }})">
+                            <select name="actions[{{ $index }}][type]" id="action-type-{{ $index }}" class="px-3 py-2 border border-gray-300 rounded-lg" onchange="updateActionType(this)">
                                 <option value="send_message" {{ $action['type'] === 'send_message' ? 'selected' : '' }}>Enviar Mensagem</option>
                                 <option value="wait" {{ $action['type'] === 'wait' ? 'selected' : '' }}>Aguardar</option>
                                 <option value="ai_response" {{ $action['type'] === 'ai_response' ? 'selected' : '' }}>Resposta com IA</option>
@@ -172,9 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
     @endforeach
     
     // Atualizar campos de ação baseado no tipo
-    @foreach($flow->actions as $index => $action)
-        updateActionType({{ $index }});
-    @endforeach
+    document.querySelectorAll('#actions-container select[id^="action-type-"]').forEach((sel) => updateActionType(sel));
 });
 
 function updateTriggerInput(triggerIndex, type) {
