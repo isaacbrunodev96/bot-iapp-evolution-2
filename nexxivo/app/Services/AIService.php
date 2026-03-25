@@ -229,10 +229,19 @@ class AIService
         if (str_contains($u, 'valor') || str_contains($u, 'preço') || str_contains($u, 'preco')) {
             return 'Consigo te passar sim — é pra uma landing de captura ou um site institucional?';
         }
-        if (str_contains($u, 'landing')) {
-            return 'Perfeito! Qual é o objetivo da landing e pra quando você precisa?';
+        $looksLikeLanding = str_contains($u, 'landing') || str_contains($u, 'lp') || str_contains($u, 'página') || str_contains($u, 'pagina');
+        $looksLikeCommerce = str_contains($u, 'loja') || str_contains($u, 'roup') || str_contains($u, 'ecommerce') || str_contains($u, 'e-commerce');
+        $mentionsWhatsapp = str_contains($u, 'whats') || str_contains($u, 'cta') || str_contains($u, 'botão') || str_contains($u, 'botao');
+
+        if ($looksLikeLanding || ($looksLikeCommerce && $mentionsWhatsapp)) {
+            return 'Perfeito! Qual é o público (feminino/masculino/infantil) e pra quando você precisa dessa landing?';
         }
-        return 'Perfeito! Me conta só um pouco mais do que você precisa pra eu te ajudar.';
+
+        if ($looksLikeCommerce) {
+            return 'Boa! Você vende mais pra qual público (feminino/masculino/infantil) e vai anunciar pelo Instagram/Meta Ads ou orgânico?';
+        }
+
+        return 'Perfeito! Me diz só o que você quer alcançar e pra quando precisa, que eu já te ajudo.';
     }
 
     /**
