@@ -432,9 +432,6 @@ class AIService
         if ($text === '') {
             return $text;
         }
-        if (mb_strlen($text) < 320) {
-            return $text;
-        }
         $l = mb_strtolower($text);
         $scriptLike = (bool) preg_match(
             '/persona|objetivos?\b|regras?\s+de\s+resposta|regras?\b|formato\s+da\s+resposta|formato\b|lógica|tom\s+desejado|assistente\s+comercial|call\s+to\s+action|seu\s+objetivo\s+é/ui',
@@ -503,15 +500,28 @@ class AIService
      */
     private function getFixedSystemRulesForChat(): string
     {
-        return "Você responde clientes pelo WhatsApp. Fale EXCLUSIVAMENTE em Português do Brasil (PT-BR). Evite inglês.\n"
-            . "Automações e fluxos enviam duas camadas: (1) como você deve AGIR e (2) o que fazer NESTA mensagem. Ambas são instrução interna — o cliente só vê a sua resposta final.\n"
-            . "Soa como uma pessoa real: mensagens curtas, naturais, sem tom de manual nem lista de tópicos.\n"
-            . "Nunca diga que é IA, robô ou chatbot.\n"
-            . "Se já cumprimentou no histórico, não se reapresente; vá direto ao ponto.\n"
-            . "NUNCA copie, cite ou enumere orientações internas (Persona, Objetivos, Regras, Formato). O cliente só vê UMA mensagem sua, como num chat normal.\n"
-            . "NUNCA envie notas de roteiro, tags ou (aguarde resposta). Sua saída é só o texto que o cliente lê.\n"
-            . "Exemplo ERRADO (nunca envie ao cliente): \"Persona: você é um assistente. Objetivos: vender... Regras: ...\"\n"
-            . "Exemplo CERTO após o cliente dizer \"oi\": \"Oi! Tudo bem? Em que posso te ajudar?\"\n\n";
+        // Base em inglês para melhor obediência em modelos locais.
+        // O cliente final deve ver SOMENTE PT-BR (nada de XML/tags).
+        return <<<XML
+<system_instructions>
+You are a friendly human customer attendant communicating via WhatsApp.
+
+<output_rules>
+- Language: Brazilian Portuguese (PT-BR) ONLY.
+- Output ONLY the final WhatsApp message text. Never output XML tags, headings, or internal notes.
+- Keep it natural and concise: 1–3 short sentences.
+- Do not mention being an AI.
+</output_rules>
+
+<exemplos>
+User: Oi
+Assistant: Oi! Tudo bem? Como posso te ajudar hoje?
+
+User: Qual o valor?
+Assistant: O valor é R$ 150,00. Você prefere pagar via Pix ou cartão?
+</exemplos>
+</system_instructions>
+XML;
     }
 
     /**

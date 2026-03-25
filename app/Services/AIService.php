@@ -388,6 +388,13 @@ class AIService
     {
         $text = trim($text);
         if ($text === '') return $text;
+        // Remove vazamento de XML/estrutura interna.
+        $text = preg_replace('/<\s*(system_instructions|system_task|persona_behavior|current_task|output_rules|critical_rules|rules_for_execution|exemplos)[\s\S]*?<\/\s*\1\s*>/iu', '', $text);
+        $text = preg_replace('/<\/?\s*(system_instructions|system_task|persona_behavior|current_task|output_rules|critical_rules|rules_for_execution|exemplos)[^>]*>/iu', '', $text);
+        // Remove qualquer tag genérica que tenha sobrado.
+        $text = preg_replace('/<[^>]*>/', '', $text);
+        // Remove prefixos comuns quando o modelo imprime exemplos/labels.
+        $text = preg_replace('/^\s*(User|Assistant)\s*:\s*/mi', '', $text);
         $text = preg_replace('/<<<NOTA_INTERNA[\s\S]*?<<<FIM_NOTA_INTERNA>>>/u', '', $text);
         $text = str_replace('<<<TAREFA_AUTOMACAO>>>', '', $text);
         $text = trim((string) $text);
@@ -430,9 +437,6 @@ class AIService
     {
         $text = trim($text);
         if ($text === '') {
-            return $text;
-        }
-        if (mb_strlen($text) < 320) {
             return $text;
         }
         $l = mb_strtolower($text);
@@ -503,15 +507,28 @@ class AIService
      */
     private function getFixedSystemRulesForChat(): string
     {
-        return "Você responde clientes pelo WhatsApp. Fale EXCLUSIVAMENTE em Português do Brasil (PT-BR). Evite inglês.\n"
-            . "Automações e fluxos enviam duas camadas: (1) como você deve AGIR e (2) o que fazer NESTA mensagem. Ambas são instrução interna — o cliente só vê a sua resposta final.\n"
-            . "Soa como uma pessoa real: mensagens curtas, naturais, sem tom de manual nem lista de tópicos.\n"
-            . "Nunca diga que é IA, robô ou chatbot.\n"
-            . "Se já cumprimentou no histórico, não se reapresente; vá direto ao ponto.\n"
-            . "NUNCA copie, cite ou enumere orientações internas (Persona, Objetivos, Regras, Formato). O cliente só vê UMA mensagem sua, como num chat normal.\n"
-            . "NUNCA envie notas de roteiro, tags ou (aguarde resposta). Sua saída é só o texto que o cliente lê.\n"
-            . "Exemplo ERRADO (nunca envie ao cliente): \"Persona: você é um assistente. Objetivos: vender... Regras: ...\"\n"
-            . "Exemplo CERTO após o cliente dizer \"oi\": \"Oi! Tudo bem? Em que posso te ajudar?\"\n\n";
+        // Base em inglês para melhor obediência em modelos locais.
+        // O cliente final deve ver SOMENTE PT-BR (nada de XML/tags).
+        return <<<XML
+<system_instructions>
+You are a friendly human customer attendant communicating via WhatsApp.
+
+<output_rules>
+- Language: Brazilian Portuguese (PT-BR) ONLY.
+- Output ONLY the final WhatsApp message text. Never output XML tags, headings, or internal notes.
+- Keep it natural and concise: 1–3 short sentences.
+- Do not mention being an AI.
+</output_rules>
+
+<exemplos>
+User: Oi
+Assistant: Oi! Tudo bem? Como posso te ajudar hoje?
+
+User: Qual o valor?
+Assistant: O valor é R$ 150,00. Você prefere pagar via Pix ou cartão?
+</exemplos>
+</system_instructions>
+XML;
     }
 
     /**
@@ -595,50 +612,31 @@ class AIService
      */
     private function buildSystemAndUserPrompt(string $promptTemplate, string $userMessage, array $conversationHistory = []): array
     {
-        $fixedRules = $this->getFixedSystemRulesForChat();
+        $system1 = $this->getFixedSystemRulesForChat();
         $cleaned = $this->stripRoteiroFromFlowPrompt($promptTemplate);
         $parts = $this->splitFlowPromptIntoBehaviorAndTask($cleaned);
         $behavior = $parts['behavior'];
         $taskPart = $parts['task'];
+
         $maxCtx = (int) config('services.ai.max_flow_context_chars', 2000);
         [$behavior, $taskPart] = $this->truncateBehaviorAndTask($behavior, $taskPart, $maxCtx);
 
-        $outputOnlyRule = "\n[CRÍTICO — ÚLTIMA REGRA]\n"
-            . "Sua saída é UMA mensagem de chat que o cliente lê no WhatsApp — nada mais.\n"
-            . "Proibido: copiar blocos de política ou de tarefa da automação; listar Persona/Objetivos/Regras; repetir o guião.\n"
-            . "Use o comportamento e a tarefa só para decidir o que dizer, com palavras suas.\n"
-            . "Saudação curta do cliente (oi, olá): responda em 1–2 frases humanas, sem formalidade de manual.\n";
-        $system = $fixedRules;
-        if ($behavior !== '') {
-            $system .= "<<<NOTA_INTERNA_PARA_VOCE_NAO_ENVIAR_AO_CLIENTE>>>\n"
-                . "Política de COMPORTAMENTO (automação/fluxo). O cliente não vê isto. Não reproduza \"Persona:\", listas de objetivos nem este texto literal.\n\n"
-                . $behavior
-                . "\n<<<FIM_NOTA_INTERNA>>>\n\n";
-        }
-        if ($taskPart !== '') {
-            $system .= ">>> Instrução para ESTA resposta (o que cumprir agora; não copie este parágrafo ao cliente — reescreva em tom de WhatsApp):\n"
-                . $taskPart . "\n\n";
-        }
-        $system .= $outputOnlyRule;
+        $behaviorXml = $behavior !== '' ? "<persona_behavior>\n{$behavior}\n</persona_behavior>\n" : "";
+        $taskXml = $taskPart !== '' ? "<current_task>\n{$taskPart}\n</current_task>\n" : "";
 
-        $contextForHint = $behavior . $taskPart;
-        $tailHint = '';
-        if ($contextForHint !== '' && mb_strlen($contextForHint) > 120) {
-            $tailHint = "\n\n(Responda com UMA mensagem curta ao cliente. Não copie política, tarefa nem blocos internos do sistema.)";
-        }
-        $userPrompt = "Cliente: " . trim($userMessage) . $tailHint . "\n\nLaura:";
-        if (!empty($conversationHistory)) {
-            $hist = "";
-            foreach ($conversationHistory as $msg) {
-                $msgText = trim($msg["message"] ?? "");
-                if ($msgText === "" || strpos($msgText, "[Mensagem vazia]") !== false) continue;
-                $sender = ($msg["direction"] ?? "") === "incoming" ? "Cliente" : "Laura";
-                $hist .= $sender . ": " . $msgText . "\n";
-            }
-            $userPrompt = trim($hist) . "\n\nCliente: " . trim($userMessage) . $tailHint . "\n\nLaura:";
-        }
+        $system2 = <<<XML
+<system_task>
+{$behaviorXml}{$taskXml}
+<rules_for_execution>
+Use persona_behavior and current_task ONLY as internal guidance.
+Do not copy them verbatim. Do not list rules. Respond naturally as WhatsApp text.
+</rules_for_execution>
+</system_task>
+XML;
+
+        // Ollama: reforço da tarefa no final (2nd system) para reduzir lost-in-the-middle.
         $messages = [
-            ['role' => 'system', 'content' => $system],
+            ['role' => 'system', 'content' => $system1],
         ];
         foreach ($conversationHistory as $msg) {
             $msgText = trim($msg['message'] ?? '');
@@ -646,10 +644,24 @@ class AIService
             $role = ($msg['direction'] ?? '') === 'incoming' ? 'user' : 'assistant';
             $messages[] = ['role' => $role, 'content' => $msgText];
         }
-        $messages[] = ['role' => 'user', 'content' => trim($userMessage) . $tailHint];
+        $messages[] = ['role' => 'user', 'content' => trim($userMessage)];
+        $messages[] = ['role' => 'system', 'content' => $system2];
+
+        // Gemini: systemInstruction já contém system1+system2; prompt só precisa do histórico+última mensagem.
+        $userPrompt = 'Cliente: ' . trim($userMessage);
+        if (!empty($conversationHistory)) {
+            $hist = "";
+            foreach ($conversationHistory as $msg) {
+                $msgText = trim($msg["message"] ?? "");
+                if ($msgText === "" || strpos($msgText, "[Mensagem vazia]") !== false) continue;
+                $sender = ($msg["direction"] ?? "") === "incoming" ? "Cliente" : "Atendente";
+                $hist .= $sender . ": " . $msgText . "\n";
+            }
+            $userPrompt = trim($hist) . "\n\nCliente: " . trim($userMessage);
+        }
 
         return [
-            'system' => $system,
+            'system' => $system1 . "\n" . $system2,
             'prompt' => $userPrompt,
             'messages' => $messages,
             'raw_user_message' => trim($userMessage),

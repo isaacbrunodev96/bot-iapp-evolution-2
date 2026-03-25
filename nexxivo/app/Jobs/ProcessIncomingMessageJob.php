@@ -360,10 +360,8 @@ class ProcessIncomingMessageJob implements ShouldQueue
             return $task;
         }
 
-        $behaviorHeader = "Automação / fluxo — leia como COMPORTAMENTO (tom, persona, limites, o que pode prometer). "
-            . "Isto orienta como você age; não é mensagem para enviar ao cliente.\n\n";
-
-        return $behaviorHeader . $desc . self::AI_TASK_DELIMITER . $task;
+        // Mantém a "behavior" do flow limpa (somente o texto do painel).
+        return $desc . self::AI_TASK_DELIMITER . $task;
     }
 
     /**
