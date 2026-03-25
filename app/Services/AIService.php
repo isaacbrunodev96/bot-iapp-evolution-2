@@ -151,7 +151,8 @@ class AIService
             $responseText = $this->generateWithOllamaNoStream($url, $model, $messages);
         }
         if ($responseText === '') {
-            throw new \Exception('Resposta vazia recebida do Ollama.');
+            // Evita falha silenciosa / loop de fallback: devolve uma resposta humana simples.
+            return $this->quickFallbackWhatsAppReply((string) ($context['raw_user_message'] ?? ''));
         }
         return $this->sanitizeResponseForChat($responseText, (string) ($context['raw_user_message'] ?? ''));
     }
@@ -163,6 +164,7 @@ class AIService
     {
         $temp = (float) config('services.ai.ollama_chat_temperature', 0.32);
         $topP = (float) config('services.ai.ollama_chat_top_p', 0.68);
+        $numPredict = (int) config('services.ai.ollama_num_predict', 160);
         $attempts = 2;
         for ($i = 0; $i < $attempts; $i++) {
             $payload = [
@@ -216,6 +218,21 @@ class AIService
         }
 
         return '';
+    }
+
+    private function quickFallbackWhatsAppReply(string $userMessage): string
+    {
+        $u = mb_strtolower(trim($userMessage));
+        if (preg_match('/^(oi|ol[aá]|opa|hey|bom dia|boa tarde|boa noite)\b/u', $u)) {
+            return 'Oi! Tudo bem? Em que posso ajudar?';
+        }
+        if (str_contains($u, 'valor') || str_contains($u, 'preço') || str_contains($u, 'preco')) {
+            return 'Consigo te passar sim — é pra uma landing de captura ou um site institucional?';
+        }
+        if (str_contains($u, 'landing')) {
+            return 'Perfeito! Qual é o objetivo da landing e pra quando você precisa?';
+        }
+        return 'Perfeito! Me conta só um pouco mais do que você precisa pra eu te ajudar.';
     }
 
     /**
