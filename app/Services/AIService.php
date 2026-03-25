@@ -248,13 +248,25 @@ class AIService
         $hasRegras = str_contains($lower, 'regra');
         $hasFormato = str_contains($lower, 'formato');
         $colons = substr_count($t, ':');
+
+        // Roteiro típico sem a palavra "Persona" e com poucos ":" (llama3.2 copia o guião inteiro)
+        $commercialScriptLeak = mb_strlen($t) > 240
+            && str_contains($lower, 'assistente comercial')
+            && $hasObjetivos
+            && $hasRegras;
+        if ($commercialScriptLeak) {
+            Log::warning('AIService: roteiro comercial copiado pelo modelo — resposta substituída por saudação curta');
+
+            return 'Olá! Tudo bem? Em que posso ajudar?';
+        }
+
         // Texto colado num parágrafo só (poucas quebras de linha) — comum no llama3.2
         $denseScript = mb_strlen($t) > 550
-            && $colons >= 5
+            && $colons >= 4
             && (
                 (str_contains($lower, 'assistente comercial') && $hasObjetivos)
                 || ($hasPersona && $hasObjetivos && $hasRegras)
-                || ($hasObjetivos && $hasFormato && $colons >= 7)
+                || ($hasObjetivos && $hasFormato && $colons >= 6)
             );
         $looksLikeScript = ($hasPersona && $hasObjetivos && $hasRegras)
             || ($hasObjetivos && $hasFormato && $hasRegras && $lineCount >= 6)
@@ -265,12 +277,9 @@ class AIService
             return null;
         }
 
-        // Bloco único: tentar isolar frase de exemplo (tom desejado)
-        if ($lineCount <= 4 && preg_match('/Olá!\s*Tudo\s*bem\?[^\n]{0,200}/ui', $t, $m)) {
-            return trim($m[0]);
-        }
-        if ($lineCount <= 4 && preg_match('/["\x{201C}](Olá[^"\x{201D}]{8,250})["\x{201D}]/u', $t, $m)) {
-            return trim($m[1]);
+        // Bloco único com trecho de exemplo: preferir saudação curta (evita colar produto/preço do exemplo)
+        if ($lineCount <= 8 && preg_match('/Olá!\s*Tudo\s*bem\?/ui', $t)) {
+            return 'Olá! Tudo bem? Em que posso ajudar?';
         }
 
         $paragraphs = preg_split('/\n\s*\n/', $t);
@@ -409,7 +418,7 @@ class AIService
         }
         $l = mb_strtolower($text);
         $scriptLike = (bool) preg_match(
-            '/persona|objetivos?\b|regras?\b|formato\b|lógica|tom\s+desejado|assistente\s+comercial|call\s+to\s+action|seu\s+objetivo\s+é/ui',
+            '/persona|objetivos?\b|regras?\s+de\s+resposta|regras?\b|formato\s+da\s+resposta|formato\b|lógica|tom\s+desejado|assistente\s+comercial|call\s+to\s+action|seu\s+objetivo\s+é/ui',
             $l
         );
         if (! $scriptLike) {

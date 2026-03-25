@@ -3,8 +3,28 @@
 @section('title', 'Editar Fluxo')
 
 @section('content')
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="bg-white rounded-lg shadow">
+<style>
+/* Painel global é dark: força texto escuro nos campos do cartão claro */
+.flow-editor-panel input[type="text"],
+.flow-editor-panel input[type="number"],
+.flow-editor-panel textarea,
+.flow-editor-panel select {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+}
+.flow-editor-panel input::placeholder,
+.flow-editor-panel textarea::placeholder {
+    color: #6b7280 !important;
+    opacity: 1;
+}
+.flow-editor-panel label { color: #374151 !important; }
+.flow-editor-panel h1 { color: #111827 !important; }
+.flow-editor-panel .text-gray-700 { color: #374151 !important; }
+.flow-editor-panel .text-gray-500 { color: #4b5563 !important; }
+.flow-editor-panel code { color: #1e3a8a !important; background: #e5e7eb !important; }
+</style>
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+    <div class="bg-white rounded-lg shadow flow-editor-panel">
         <div class="p-6 border-b border-gray-200">
             <h1 class="text-2xl font-bold text-gray-900">Editar Fluxo</h1>
         </div>
