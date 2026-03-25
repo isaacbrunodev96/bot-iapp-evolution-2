@@ -369,6 +369,22 @@ class ProcessIncomingMessageJob implements ShouldQueue
             return $response;
         }
 
+        $rl = mb_strtolower($r);
+        // O modelo pode omitir palavras ("Seu objetivo" → "objetivo") — combinação típica de guião comercial
+        $hasRegrasOuExemplo = str_contains($rl, 'regras de resposta')
+            || str_contains($rl, 'exemplo de tom')
+            || str_contains($rl, 'formato da resposta');
+        if (mb_strlen($r) > 180
+            && str_contains($rl, 'assistente comercial')
+            && $hasRegrasOuExemplo
+            && str_contains($rl, 'objetivo')) {
+            Log::warning('ProcessIncomingMessageJob: resposta com padrão de guião comercial (eco da descrição) — substituída', [
+                'flow_id' => $flow->id,
+            ]);
+
+            return 'Olá! Tudo bem? Em que posso ajudar?';
+        }
+
         $needles = [];
         $needles[] = mb_substr($d, 0, min(72, mb_strlen($d)));
         if (mb_strlen($d) > 100) {
@@ -379,10 +395,14 @@ class ProcessIncomingMessageJob implements ShouldQueue
         }
         if (str_contains(mb_strtolower($d), 'regras de resposta')) {
             $needles[] = 'Regras de resposta';
+            $needles[] = 'Regras de resposta: - responda';
+        }
+        if (str_contains(mb_strtolower($d), 'formato da resposta')) {
+            $needles[] = 'Formato da resposta';
         }
 
         foreach (array_unique(array_filter($needles)) as $needle) {
-            if (mb_strlen($needle) < 28) {
+            if (mb_strlen($needle) < 14) {
                 continue;
             }
             if (mb_stripos($r, $needle) !== false) {
