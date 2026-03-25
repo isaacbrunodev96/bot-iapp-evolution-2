@@ -8,18 +8,32 @@ use Illuminate\Http\Request;
 
 class ChatController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $instanceNames = BotInstance::forPanelUser()->pluck('instance_name');
-        $conversations = Conversation::with('latestMessage')
+        $instances = BotInstance::forPanelUser()->orderBy('instance_name')->get();
+
+        $instanceFilter = $request->query('instance');
+        if ($instanceFilter !== null && $instanceFilter !== '' && ! $instanceNames->contains($instanceFilter)) {
+            $instanceFilter = null;
+        } elseif ($instanceFilter === '') {
+            $instanceFilter = null;
+        }
+
+        $query = Conversation::with('latestMessage')
             ->whereIn('instance_name', $instanceNames)
             ->where('is_archived', false)
-            ->orderBy('last_message_at', 'desc')
-            ->paginate(20);
+            ->when($instanceFilter, fn ($q) => $q->where('instance_name', $instanceFilter));
 
-        $instances = BotInstance::forPanelUser()->get();
+        if ($instanceFilter) {
+            $query->orderBy('last_message_at', 'desc');
+        } else {
+            $query->orderBy('instance_name')->orderBy('last_message_at', 'desc');
+        }
 
-        return view('chat.index', compact('conversations', 'instances'));
+        $conversations = $query->paginate(20)->withQueryString();
+
+        return view('chat.index', compact('conversations', 'instances', 'instanceFilter'));
     }
 
     public function show($id)

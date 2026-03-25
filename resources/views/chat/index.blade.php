@@ -11,24 +11,43 @@
         <p class="text-gray-400 mt-2">Gerencie todas as conversas em um só lugar.</p>
     </div>
 
-    <!-- Barra de Busca -->
-    <div class="flex items-center gap-4 mb-6">
+    <!-- Busca e filtro por instância -->
+    <div class="flex flex-col gap-4 mb-6">
         <div class="relative flex-1">
             <div class="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
                 <i class="fas fa-search text-gray-500"></i>
             </div>
             <input type="text" placeholder="Buscar conversas..." class="w-full bg-[#16161D] border border-[#2A2A35] rounded-xl text-white pl-11 pr-4 py-3 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition placeholder-gray-500">
         </div>
-        <button class="bg-[#16161D] border border-[#2A2A35] hover:border-purple-500 text-gray-300 hover:text-white px-5 py-3 rounded-xl transition flex items-center gap-2 font-medium shrink-0">
-            <i class="fas fa-filter"></i> Filtrar
-        </button>
+        @if($instances->count() > 1)
+        <div class="flex flex-col gap-2">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Instância</span>
+            <div class="flex items-center gap-2 flex-wrap">
+                <a href="{{ route('chat.index') }}" class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium border transition whitespace-nowrap {{ ($instanceFilter ?? null) === null ? 'bg-gradient-to-r from-purple-600/25 to-pink-600/25 border-purple-500/50 text-white' : 'bg-[#16161D] border-[#2A2A35] text-gray-400 hover:border-purple-500/50 hover:text-white' }}">
+                    Todas
+                </a>
+                @foreach($instances as $inst)
+                <a href="{{ route('chat.index', ['instance' => $inst->instance_name]) }}" title="{{ $inst->instance_name }}" class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium border transition whitespace-nowrap max-w-[min(100%,14rem)] truncate {{ ($instanceFilter ?? null) === $inst->instance_name ? 'bg-gradient-to-r from-purple-600/25 to-pink-600/25 border-purple-500/50 text-white' : 'bg-[#16161D] border-[#2A2A35] text-gray-400 hover:border-purple-500/50 hover:text-white' }}">
+                    {{ $inst->instance_name }}
+                </a>
+                @endforeach
+            </div>
+        </div>
+        @endif
     </div>
 
     <!-- Lista de Conversas -->
     <div class="flex-1 bg-[#16161D] border border-[#2A2A35] rounded-2xl flex flex-col overflow-hidden shadow-xl shadow-black/20">
         
         <div class="overflow-y-auto flex-1 divide-y divide-[#2A2A35]/50">
+            @php $lastInstanceSection = null; @endphp
             @forelse($conversations as $conversation)
+            @if(($instanceFilter ?? null) === null && $instances->count() > 1 && $lastInstanceSection !== $conversation->instance_name)
+            @php $lastInstanceSection = $conversation->instance_name; @endphp
+            <div class="px-5 py-2.5 bg-[#14141C] border-b border-[#2A2A35]/60">
+                <span class="text-xs font-semibold text-purple-400/90 uppercase tracking-wider">{{ $conversation->instance_name }}</span>
+            </div>
+            @endif
             @php
                 $statusColor = 'bg-gray-500/10 text-gray-400 border-gray-500/20'; // Default Default
                 if($conversation->kanban_status === 'novo') $statusColor = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
