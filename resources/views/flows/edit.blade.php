@@ -38,7 +38,7 @@
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Descrição</label>
                 <textarea name="description" rows="5" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">{{ $flow->description }}</textarea>
-                <p class="text-xs text-gray-500 mt-1">Persona e regras do negócio (orientação <strong>interna</strong> para a IA). Isto não deve ser copiado ao cliente. Na ação &quot;Resposta com IA&quot;, use um <strong>prompt curto</strong>, ex.: <code class="bg-gray-100 px-1 rounded">Responda de forma natural: {message}</code></p>
+                <p class="text-xs text-gray-500 mt-1">Define <strong>como a IA deve agir</strong> (tom, limites, persona) — só orientação interna. O motor junta isto ao prompt da ação: descrição = comportamento; prompt da ação = o que fazer <em>nesta</em> mensagem. Nada disso deve ser copiado ao cliente.</p>
             </div>
 
             <div>
@@ -104,7 +104,7 @@
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Prompt da IA</label>
                                     <textarea name="actions[{{ $index }}][prompt]" required rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Ex: Responda de forma natural e breve: {message}">{{ $action['prompt'] ?? '' }}</textarea>
-                                    <p class="text-xs text-gray-500 mt-1">Mantenha <strong>curto</strong>. A persona longa fica em <strong>Descrição</strong> do fluxo. Use <code class="bg-gray-100 px-1 rounded">{message}</code>.</p>
+                                    <p class="text-xs text-gray-500 mt-1">Tarefa desta rodada (ex.: &quot;responda ao preço&quot;). A persona fica na <strong>Descrição</strong>. Use <code class="bg-gray-100 px-1 rounded">{message}</code>. Curto e objetivo.</p>
                                 </div>
                                 <div class="grid grid-cols-2 gap-3">
                                     <div>

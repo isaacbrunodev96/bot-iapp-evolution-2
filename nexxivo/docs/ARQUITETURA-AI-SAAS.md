@@ -35,6 +35,35 @@ Ou seja: **cada fluxo tem seu próprio prompt**. A “Laura” está só no flux
 
 Isso foi feito para corrigir respostas em inglês e “sem nexo”. Se no futuro você tiver inquilinos que queiram resposta em inglês, dá para tornar a regra de idioma e as substituições **opcionais por fluxo** (ex.: campo “Idioma da resposta” na ação “Resposta com IA”).
 
+## Pipeline: automação / fluxo → duas camadas no system
+
+1. **`ProcessIncomingMessageJob::composeAiPromptFromFlowAndAction`** monta um único texto com comportamento (descrição), marcador **`<<<TAREFA_AUTOMACAO>>>`** (`AI_TASK_DELIMITER`) e tarefa (prompt da ação).
+
+2. **`AIService`** separa comportamento vs tarefa e coloca no system em blocos distintos (NOTA_INTERNA + instrução da rodada). Formato legado `\n---\n\n[Tarefa]\n` ainda é aceite.
+
+3. Sanitização e `stripResponseIfEchoesFlowDescription` mantêm-se.
+
+## Por que a IA “repetia a descrição do fluxo”?
+
+1. **O que vai para o modelo**  
+   O job junta descrição + prompt da ação; o serviço agora **explicita duas camadas** no system para reduzir o modelo a “recitar” o guião inteiro.
+
+2. **Defesas já existentes**  
+   - Regras fixas no system (“não copie Persona/Objetivos…”).  
+   - Bloco interno delimitado (`<<<NOTA_INTERNA…>>>`) + exemplo certo/errado.  
+   - Lembrete na última mensagem do utilizador (Ollama + texto usado no Gemini).  
+   - `stripResponseIfEchoesFlowDescription` no job e heurísticas em `sanitizeResponseForChat` / `stripLeakedPromptFromResponse`.  
+   - Limite de caracteres do contexto (`AI_MAX_FLOW_CONTEXT_CHARS` em `config/services.php`).
+
+3. **Como escrever para soar humano**  
+   - **Descrição do fluxo**: quem você é, tom, o que pode/não pode prometer — em frases curtas. **Não** coloque aqui a fala literal que o cliente deve receber.  
+   - **Prompt da ação**: a *tarefa* (“responda à dúvida sobre preço”, “confirme o horário”).  
+   - Evite colar o **mesmo texto** nos dois campos (o job já evita duplicar se forem idênticos).  
+   - Prefira “seja breve e natural” a roteiros com “ESTADO 1 / ESTADO 2” e falas fixas.
+
+4. **Ollama: temperatura**  
+   `OLLAMA_CHAT_TEMPERATURE` (padrão `0.32`) e `OLLAMA_CHAT_TOP_P` (`0.68`) em `.env` afinam naturalidade vs. consistência. Valores muito altos podem aumentar eco do guião em modelos fracos.
+
 ## Conversa menos robótica (boas práticas)
 
 1. **Usar histórico**  

@@ -92,11 +92,16 @@ class AIService
                 ['role' => 'user', 'content' => trim($context['prompt'])],
             ];
         }
+        $temp = (float) config('services.ai.ollama_chat_temperature', 0.32);
+        $topP = (float) config('services.ai.ollama_chat_top_p', 0.68);
         $payload = [
             'model' => $model,
             'messages' => $messages,
             'stream' => true,
-            'options' => ['temperature' => 0.28, 'top_p' => 0.65],
+            'options' => [
+                'temperature' => max(0.0, min(1.0, $temp)),
+                'top_p' => max(0.0, min(1.0, $topP)),
+            ],
         ];
         Log::info('Payload enviado ao Ollama:', ['messages' => $messages]);
         $url = rtrim($this->ollamaUrl, '/') . '/api/chat';
@@ -151,11 +156,16 @@ class AIService
      */
     private function generateWithOllamaNoStream(string $url, string $model, array $messages): string
     {
+        $temp = (float) config('services.ai.ollama_chat_temperature', 0.32);
+        $topP = (float) config('services.ai.ollama_chat_top_p', 0.68);
         $payload = [
             'model' => $model,
             'messages' => $messages,
             'stream' => false,
-            'options' => ['temperature' => 0.28, 'top_p' => 0.65],
+            'options' => [
+                'temperature' => max(0.0, min(1.0, $temp)),
+                'top_p' => max(0.0, min(1.0, $topP)),
+            ],
         ];
         $response = Http::timeout(180)->post($url, $payload);
         if (! $response->successful()) {
@@ -378,6 +388,9 @@ class AIService
     {
         $text = trim($text);
         if ($text === '') return $text;
+        $text = preg_replace('/<<<NOTA_INTERNA[\s\S]*?<<<FIM_NOTA_INTERNA>>>/u', '', $text);
+        $text = str_replace('<<<TAREFA_AUTOMACAO>>>', '', $text);
+        $text = trim((string) $text);
         // Remover vazamento de prompt: blocos com regras, exemplos ou instruções
         $text = $this->stripLeakedPromptFromResponse($text);
         $text = preg_replace('/\bsmile\b\s*/', '', $text);
@@ -389,6 +402,12 @@ class AIService
         foreach ($lines as $line) {
             $t = trim($line);
             if ($t === '') continue;
+            if (str_starts_with($t, '>>>')) {
+                continue;
+            }
+            if (preg_match('/^Automação\s*\/\s*fluxo\s*—/ui', $t)) {
+                continue;
+            }
             if (preg_match('/^ESTADO\s+\d+/ui', $t)) continue;
             if (preg_match('/^PARE\s+AQUI/ui', $t) || preg_match('/^Gatilho\s*:/ui', $t)) continue;
             if (preg_match('/^NUNCA\s+(ignore|repite|mostre|cite)/ui', $t)) continue;
@@ -485,11 +504,14 @@ class AIService
     private function getFixedSystemRulesForChat(): string
     {
         return "Você responde clientes pelo WhatsApp. Fale EXCLUSIVAMENTE em Português do Brasil (PT-BR). Evite inglês.\n"
+            . "Automações e fluxos enviam duas camadas: (1) como você deve AGIR e (2) o que fazer NESTA mensagem. Ambas são instrução interna — o cliente só vê a sua resposta final.\n"
             . "Soa como uma pessoa real: mensagens curtas, naturais, sem tom de manual nem lista de tópicos.\n"
             . "Nunca diga que é IA, robô ou chatbot.\n"
             . "Se já cumprimentou no histórico, não se reapresente; vá direto ao ponto.\n"
             . "NUNCA copie, cite ou enumere orientações internas (Persona, Objetivos, Regras, Formato). O cliente só vê UMA mensagem sua, como num chat normal.\n"
-            . "NUNCA envie notas de roteiro, tags ou (aguarde resposta). Sua saída é só o texto que o cliente lê.\n\n";
+            . "NUNCA envie notas de roteiro, tags ou (aguarde resposta). Sua saída é só o texto que o cliente lê.\n"
+            . "Exemplo ERRADO (nunca envie ao cliente): \"Persona: você é um assistente. Objetivos: vender... Regras: ...\"\n"
+            . "Exemplo CERTO após o cliente dizer \"oi\": \"Oi! Tudo bem? Em que posso te ajudar?\"\n\n";
     }
 
     /**
@@ -515,6 +537,52 @@ class AIService
     }
 
     /**
+     * Separa política de comportamento (descrição do fluxo) da tarefa da ação. Chamadas à API usam só tarefa.
+     */
+    private function splitFlowPromptIntoBehaviorAndTask(string $template): array
+    {
+        $template = trim($template);
+        if ($template === '') {
+            return ['behavior' => '', 'task' => ''];
+        }
+        $marker = '<<<TAREFA_AUTOMACAO>>>';
+        $pos = mb_strpos($template, $marker);
+        if ($pos !== false) {
+            return [
+                'behavior' => trim(mb_substr($template, 0, $pos)),
+                'task' => trim(mb_substr($template, $pos + mb_strlen($marker))),
+            ];
+        }
+        if (preg_match('/^(.+?)\R---\s*\R+\[Tarefa\]\s*\R(.+)$/s', $template, $m)) {
+            return ['behavior' => trim($m[1]), 'task' => trim($m[2])];
+        }
+
+        return ['behavior' => '', 'task' => $template];
+    }
+
+    /**
+     * Aplica limite de caracteres: prioriza manter a tarefa; trunca o bloco de comportamento.
+     */
+    private function truncateBehaviorAndTask(string $behavior, string $task, int $maxTotal): array
+    {
+        $b = $behavior;
+        $t = $task;
+        $total = mb_strlen($b) + mb_strlen($t);
+        if ($total <= $maxTotal || $maxTotal < 1) {
+            return [$b, $t];
+        }
+        $over = $total - $maxTotal;
+        if (mb_strlen($b) > $over + 120) {
+            $b = mb_substr($b, 0, mb_strlen($b) - $over)
+                . "\n[...trecho da automação omitido: use o que já leu — tom amigável, mensagem CURTA ao cliente, sem listar regras.]";
+        } elseif (mb_strlen($t) > 80) {
+            $t = mb_substr($t, 0, max(80, mb_strlen($t) - $over)) . "\n[...tarefa truncada.]";
+        }
+
+        return [trim($b), trim($t)];
+    }
+
+    /**
      * Contexto central: system (regras + contexto limpo) e prompt (conversa Cliente/Laura). Usado por Ollama e Gemini.
      */
     private function buildCentralContext(string $promptTemplate, string $userMessage, array $conversationHistory = []): array
@@ -528,15 +596,37 @@ class AIService
     private function buildSystemAndUserPrompt(string $promptTemplate, string $userMessage, array $conversationHistory = []): array
     {
         $fixedRules = $this->getFixedSystemRulesForChat();
-        $contextFromFlow = $this->stripRoteiroFromFlowPrompt($promptTemplate);
+        $cleaned = $this->stripRoteiroFromFlowPrompt($promptTemplate);
+        $parts = $this->splitFlowPromptIntoBehaviorAndTask($cleaned);
+        $behavior = $parts['behavior'];
+        $taskPart = $parts['task'];
         $maxCtx = (int) config('services.ai.max_flow_context_chars', 2000);
-        if ($contextFromFlow !== '' && mb_strlen($contextFromFlow) > $maxCtx) {
-            $contextFromFlow = mb_substr($contextFromFlow, 0, $maxCtx)
-                . "\n[...trecho omitido: use só a ideia, tom comercial amigável, mensagem CURTA ao cliente, sem listar regras.]";
+        [$behavior, $taskPart] = $this->truncateBehaviorAndTask($behavior, $taskPart, $maxCtx);
+
+        $outputOnlyRule = "\n[CRÍTICO — ÚLTIMA REGRA]\n"
+            . "Sua saída é UMA mensagem de chat que o cliente lê no WhatsApp — nada mais.\n"
+            . "Proibido: copiar blocos de política ou de tarefa da automação; listar Persona/Objetivos/Regras; repetir o guião.\n"
+            . "Use o comportamento e a tarefa só para decidir o que dizer, com palavras suas.\n"
+            . "Saudação curta do cliente (oi, olá): responda em 1–2 frases humanas, sem formalidade de manual.\n";
+        $system = $fixedRules;
+        if ($behavior !== '') {
+            $system .= "<<<NOTA_INTERNA_PARA_VOCE_NAO_ENVIAR_AO_CLIENTE>>>\n"
+                . "Política de COMPORTAMENTO (automação/fluxo). O cliente não vê isto. Não reproduza \"Persona:\", listas de objetivos nem este texto literal.\n\n"
+                . $behavior
+                . "\n<<<FIM_NOTA_INTERNA>>>\n\n";
         }
-        $outputOnlyRule = "\n\n[CRÍTICO] Sua resposta deve conter APENAS a mensagem que você envia ao cliente. NUNCA repita, cite ou liste Persona, Objetivos, Regras, Formato ou Lógica. NUNCA copie o roteiro acima. Para \"oi\"/saudação, responda em 1–2 frases curtas. Uma única mensagem natural.";
-        $system = $fixedRules . ($contextFromFlow !== '' ? "Contexto útil (use apenas para orientar suas respostas, não repita isso ao cliente):\n" . $contextFromFlow . "\n\n" : '') . $outputOnlyRule;
-        $userPrompt = "Cliente: " . trim($userMessage) . "\n\nLaura:";
+        if ($taskPart !== '') {
+            $system .= ">>> Instrução para ESTA resposta (o que cumprir agora; não copie este parágrafo ao cliente — reescreva em tom de WhatsApp):\n"
+                . $taskPart . "\n\n";
+        }
+        $system .= $outputOnlyRule;
+
+        $contextForHint = $behavior . $taskPart;
+        $tailHint = '';
+        if ($contextForHint !== '' && mb_strlen($contextForHint) > 120) {
+            $tailHint = "\n\n(Responda com UMA mensagem curta ao cliente. Não copie política, tarefa nem blocos internos do sistema.)";
+        }
+        $userPrompt = "Cliente: " . trim($userMessage) . $tailHint . "\n\nLaura:";
         if (!empty($conversationHistory)) {
             $hist = "";
             foreach ($conversationHistory as $msg) {
@@ -545,7 +635,7 @@ class AIService
                 $sender = ($msg["direction"] ?? "") === "incoming" ? "Cliente" : "Laura";
                 $hist .= $sender . ": " . $msgText . "\n";
             }
-            $userPrompt = trim($hist) . "\n\nCliente: " . trim($userMessage) . "\n\nLaura:";
+            $userPrompt = trim($hist) . "\n\nCliente: " . trim($userMessage) . $tailHint . "\n\nLaura:";
         }
         $messages = [
             ['role' => 'system', 'content' => $system],
@@ -556,7 +646,7 @@ class AIService
             $role = ($msg['direction'] ?? '') === 'incoming' ? 'user' : 'assistant';
             $messages[] = ['role' => $role, 'content' => $msgText];
         }
-        $messages[] = ['role' => 'user', 'content' => trim($userMessage)];
+        $messages[] = ['role' => 'user', 'content' => trim($userMessage) . $tailHint];
 
         return [
             'system' => $system,

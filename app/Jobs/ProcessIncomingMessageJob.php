@@ -228,7 +228,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
         try {
             $response = $aiService->generateResponse($prompt, $this->messageText, $provider, $model, $history);
             $response = trim($response);
-            $response = $this->stripResponseIfEchoesFlowDescription($response, $flow);
+            $response = $this->stripResponseIfEchoesFlowDescription($response, $flow, $action);
             if ($response !== '') {
                 $sendAudio = ! empty($action['send_audio']) || ($action['response_type'] ?? '') === 'audio';
                 if ($sendAudio) {
@@ -318,9 +318,11 @@ class ProcessIncomingMessageJob implements ShouldQueue
     }
 
     /**
-     * Descrição do fluxo = persona/orientação INTERNA. Prompt da ação = tarefa curta (ex.: responder ao cliente).
-     * Se o utilizador colou o mesmo texto nos dois, não duplicar.
+     * Junta descrição do fluxo (como a IA deve agir) e prompt da ação (o que fazer nesta mensagem).
+     * O AIService separa pelo marcador <<<TAREFA_AUTOMACAO>>> — política vs tarefa, para não tratar tudo como texto a recitar.
      */
+    public const AI_TASK_DELIMITER = "\n\n<<<TAREFA_AUTOMACAO>>>\n";
+
     private function composeAiPromptFromFlowAndAction(Flow $flow, array $action): string
     {
         $desc = trim((string) ($flow->description ?? ''));
@@ -338,9 +340,10 @@ class ProcessIncomingMessageJob implements ShouldQueue
             return $task;
         }
 
-        $header = "[Orientação interna — define persona, tom e limites. Isto NÃO é mensagem para o cliente: não copie, não cite, não enumere ao cliente.]\n";
+        $behaviorHeader = "Automação / fluxo — leia como COMPORTAMENTO (tom, persona, limites, o que pode prometer). "
+            . "Isto orienta como você age; não é mensagem para enviar ao cliente.\n\n";
 
-        return $header . $desc . "\n\n---\n\n[Tarefa]\n" . $task;
+        return $behaviorHeader . $desc . self::AI_TASK_DELIMITER . $task;
     }
 
     /**
@@ -350,10 +353,9 @@ class ProcessIncomingMessageJob implements ShouldQueue
      * @see https://github.com/ollama/ollama/issues/1103 (modelos a repetir contexto)
      * @see https://docs.ollama.com/api/chat (roles system / user na API)
      */
-    private function stripResponseIfEchoesFlowDescription(string $response, Flow $flow): string
+    private function stripResponseIfEchoesFlowDescription(string $response, Flow $flow, array $action = []): string
     {
-        $desc = trim((string) ($flow->description ?? ''));
-        if ($desc === '' || $response === '') {
+        if ($response === '') {
             return $response;
         }
 
@@ -363,12 +365,8 @@ class ProcessIncomingMessageJob implements ShouldQueue
             return $s ?? '';
         };
 
-        $d = $norm($desc);
         $r = $norm($response);
-        if (mb_strlen($d) < 35) {
-            return $response;
-        }
-
+        $lenR = mb_strlen($r);
         $rl = mb_strtolower($r);
         // O modelo pode omitir palavras ("Seu objetivo" → "objetivo") — combinação típica de guião comercial
         $hasRegrasOuExemplo = str_contains($rl, 'regras de resposta')
@@ -385,50 +383,103 @@ class ProcessIncomingMessageJob implements ShouldQueue
             return 'Olá! Tudo bem? Em que posso ajudar?';
         }
 
-        $needles = [];
-        $needles[] = mb_substr($d, 0, min(72, mb_strlen($d)));
-        if (mb_strlen($d) > 100) {
-            $needles[] = mb_substr($d, 40, min(72, mb_strlen($d) - 40));
-        }
-        if (preg_match('/você\s+é\s+um\s+.{30,120}/ui', $d, $m)) {
-            $needles[] = $norm($m[0]);
-        }
-        if (str_contains(mb_strtolower($d), 'regras de resposta')) {
-            $needles[] = 'Regras de resposta';
-            $needles[] = 'Regras de resposta: - responda';
-        }
-        if (str_contains(mb_strtolower($d), 'formato da resposta')) {
-            $needles[] = 'Formato da resposta';
-        }
-
-        foreach (array_unique(array_filter($needles)) as $needle) {
-            if (mb_strlen($needle) < 14) {
+        $sources = $this->getEchoSources($flow, $action, $norm);
+        foreach ($sources as $source) {
+            $text = $source['text'];
+            $label = $source['label'];
+            $simThreshold = (float) $source['sim_threshold'];
+            $lenSource = mb_strlen($text);
+            if ($lenSource < 35) {
                 continue;
             }
-            if (mb_stripos($r, $needle) !== false) {
-                Log::warning('ProcessIncomingMessageJob: resposta contém trecho da descrição do fluxo — substituída', [
-                    'flow_id' => $flow->id,
-                    'needle_len' => mb_strlen($needle),
-                ]);
 
-                return 'Olá! Tudo bem? Em que posso ajudar?';
+            $needles = $this->buildEchoNeedles($text, $norm);
+            $minRespForNeedle = max(120, (int) min(260, floor($lenSource * 0.35)));
+            if ($lenR >= $minRespForNeedle) {
+                foreach (array_unique(array_filter($needles)) as $needle) {
+                    if (mb_strlen($needle) < 14) {
+                        continue;
+                    }
+                    if (mb_stripos($r, $needle) !== false) {
+                        Log::warning('ProcessIncomingMessageJob: resposta contém trecho de instrução interna — substituída', [
+                            'flow_id' => $flow->id,
+                            'source' => $label,
+                            'needle_len' => mb_strlen($needle),
+                        ]);
+
+                        return 'Olá! Tudo bem? Em que posso ajudar?';
+                    }
+                }
             }
-        }
 
-        $lenD = mb_strlen($d);
-        $lenR = mb_strlen($r);
-        if ($lenD > 120 && $lenR > 150 && $lenR >= (int) ($lenD * 0.55) && $lenD < 4000) {
-            similar_text(mb_strtolower($r), mb_strtolower($d), $pct);
-            if ($pct > 42.0) {
-                Log::warning('ProcessIncomingMessageJob: resposta muito similar à descrição do fluxo', [
-                    'flow_id' => $flow->id,
-                    'similarity_pct' => $pct,
-                ]);
+            if ($lenSource > 120 && $lenR > 150 && $lenR >= (int) ($lenSource * 0.55) && $lenSource < 4000) {
+                similar_text(mb_strtolower($r), mb_strtolower($text), $pct);
+                if ($pct > $simThreshold) {
+                    Log::warning('ProcessIncomingMessageJob: resposta muito similar à instrução interna', [
+                        'flow_id' => $flow->id,
+                        'source' => $label,
+                        'similarity_pct' => $pct,
+                    ]);
 
-                return 'Olá! Tudo bem? Em que posso ajudar?';
+                    return 'Olá! Tudo bem? Em que posso ajudar?';
+                }
             }
         }
 
         return $response;
+    }
+
+    private function getEchoSources(Flow $flow, array $action, callable $norm): array
+    {
+        $sources = [];
+
+        $desc = $norm((string) ($flow->description ?? ''));
+        if (mb_strlen($desc) >= 35) {
+            $sources[] = [
+                'label' => 'flow_description',
+                'text' => $desc,
+                'sim_threshold' => 42.0,
+            ];
+        }
+
+        $rawAction = trim((string) ($action['prompt'] ?? ''));
+        if ($desc !== '' && $rawAction !== '' && $norm($rawAction) === $desc) {
+            $rawAction = '';
+        }
+        $task = $rawAction !== ''
+            ? str_replace(['{message}', '{user_message}'], $this->messageText, $rawAction)
+            : '';
+        $task = $norm($task);
+        if (mb_strlen($task) >= 110) {
+            $sources[] = [
+                'label' => 'action_task',
+                'text' => $task,
+                'sim_threshold' => 64.0,
+            ];
+        }
+
+        return $sources;
+    }
+
+    private function buildEchoNeedles(string $sourceText, callable $norm): array
+    {
+        $needles = [];
+        $needles[] = mb_substr($sourceText, 0, min(72, mb_strlen($sourceText)));
+        if (mb_strlen($sourceText) > 100) {
+            $needles[] = mb_substr($sourceText, 40, min(72, mb_strlen($sourceText) - 40));
+        }
+        if (preg_match('/você\s+é\s+um\s+.{30,120}/ui', $sourceText, $m)) {
+            $needles[] = $norm($m[0]);
+        }
+        $sl = mb_strtolower($sourceText);
+        if (str_contains($sl, 'regras de resposta')) {
+            $needles[] = 'Regras de resposta';
+            $needles[] = 'Regras de resposta: - responda';
+        }
+        if (str_contains($sl, 'formato da resposta')) {
+            $needles[] = 'Formato da resposta';
+        }
+
+        return $needles;
     }
 }
