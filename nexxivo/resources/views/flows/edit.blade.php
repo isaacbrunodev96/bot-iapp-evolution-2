@@ -171,8 +171,8 @@ document.addEventListener('DOMContentLoaded', function() {
         @endif
     @endforeach
     
-    // Atualizar campos de ação baseado no tipo
-    document.querySelectorAll('#actions-container select[id^="action-type-"]').forEach((sel) => updateActionType(sel));
+    // NÃO atualizar ações aqui: o Blade já renderiza os campos com valores.
+    // Se rodarmos updateActionType(), ele recria o HTML e pode zerar o prompt.
 });
 
 function updateTriggerInput(triggerIndex, type) {
@@ -246,6 +246,11 @@ function updateActionType(arg) {
         ? actionDiv.querySelector('[id^="action-content-"]')
         : document.getElementById(`action-content-${actionIndex}`);
     if (!contentDiv) return;
+
+    // Se já existem campos compatíveis com o tipo atual, não sobrescreva (preserva valores).
+    if (select.value === 'send_message' && contentDiv.querySelector('input[name*="[content]"]')) return;
+    if (select.value === 'wait' && contentDiv.querySelector('input[name*="[duration]"]')) return;
+    if (select.value === 'ai_response' && contentDiv.querySelector('textarea[name*="[prompt]"]')) return;
     
     if (select.value === 'send_message') {
         contentDiv.innerHTML = `
