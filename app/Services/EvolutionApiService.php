@@ -162,11 +162,32 @@ class EvolutionApiService
         $l = str_replace("\u{00A0}", ' ', $l);
         $l = preg_replace('/\s+/u', ' ', $l);
 
+        // Padrão 1: roteiro "você é um assistente..."
         $looksLikePromptDump =
             (str_contains($l, 'você é um assistente') || str_contains($l, 'assistente comercial'))
             && (str_contains($l, 'regras de resposta') || str_contains($l, 'formato da resposta') || str_contains($l, 'seu objetivo'));
 
-        if ($looksLikePromptDump) {
+        // Padrão 2: prompt operacional "Mensagem do cliente: ... Responda como humano ... Não liste regras..."
+        $promptMarkers = [
+            'mensagem do cliente',
+            'responda como humano',
+            'não liste regras',
+            'nao liste regras',
+            'não repita instruções',
+            'nao repita instrucoes',
+            'pt-br',
+            '1–3 frases',
+            '1-3 frases',
+        ];
+        $hits = 0;
+        foreach ($promptMarkers as $m) {
+            if (str_contains($l, $m)) {
+                $hits++;
+            }
+        }
+        $looksLikeOperationalPrompt = $hits >= 2;
+
+        if ($looksLikePromptDump || $looksLikeOperationalPrompt) {
             Log::warning('EvolutionApiService: bloqueado envio de roteiro/prompt ao cliente', [
                 'instance' => $instanceName,
                 'text_preview' => mb_substr($text, 0, 120),
