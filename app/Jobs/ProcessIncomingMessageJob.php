@@ -314,7 +314,10 @@ class ProcessIncomingMessageJob implements ShouldQueue
             if ($matches && ! empty($condition['actions'])) {
                 foreach ($condition['actions'] as $sub) {
                     if (($sub['type'] ?? '') === 'send_message' && trim((string) ($sub['content'] ?? '')) !== '') {
-                        $evolution->sendText($this->instanceName, $this->contact, trim($sub['content']));
+                        $content = $this->sanitizeOutgoingStaticMessage(trim((string) ($sub['content'] ?? '')));
+                        if ($content !== '') {
+                            $evolution->sendText($this->instanceName, $this->contact, $content);
+                        }
                     }
                     if (($sub['type'] ?? '') === 'ai_response') {
                         $this->executeAiResponse($sub, $evolution, $aiService, $elevenLabs, $conversationId, $flow);
@@ -328,13 +331,42 @@ class ProcessIncomingMessageJob implements ShouldQueue
         if ($default && ! empty($default['actions'])) {
             foreach ($default['actions'] as $sub) {
                 if (($sub['type'] ?? '') === 'send_message' && trim((string) ($sub['content'] ?? '')) !== '') {
-                    $evolution->sendText($this->instanceName, $this->contact, trim($sub['content']));
+                    $content = $this->sanitizeOutgoingStaticMessage(trim((string) ($sub['content'] ?? '')));
+                    if ($content !== '') {
+                        $evolution->sendText($this->instanceName, $this->contact, $content);
+                    }
                 }
                 if (($sub['type'] ?? '') === 'ai_response') {
                     $this->executeAiResponse($sub, $evolution, $aiService, $elevenLabs, $conversationId, $flow);
                 }
             }
         }
+    }
+
+    /**
+     * Guard rail: evita enviar ao WhatsApp blocos de "roteiro/prompt" caso alguém tenha colado isso em send_message.
+     */
+    private function sanitizeOutgoingStaticMessage(string $text): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+
+        $l = mb_strtolower($text);
+        $looksLikePromptDump =
+            preg_match('/\bvoc[eê]\s+é\s+um\s+assistente\b/ui', $text)
+            && (str_contains($l, 'regras de resposta') || str_contains($l, 'formato da resposta') || str_contains($l, 'seu objetivo'));
+
+        if ($looksLikePromptDump) {
+            Log::warning('ProcessIncomingMessageJob: send_message contém roteiro/prompt — substituído', [
+                'instance' => $this->instanceName,
+            ]);
+
+            return 'Oi! Tudo bem? Em que posso ajudar?';
+        }
+
+        return $text;
     }
 
     /**
