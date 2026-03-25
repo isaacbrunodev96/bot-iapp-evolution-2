@@ -47,6 +47,8 @@ return [
         'default_model' => env('AI_DEFAULT_MODEL', 'ollama'),
         'ollama_url' => env('OLLAMA_URL', 'http://localhost:11434'),
         'ollama_model' => env('OLLAMA_MODEL', 'llama2'),
+        /** Se true, usa /api/chat com stream=true (curl). Default false por estabilidade (evita "resposta vazia"). */
+        'ollama_use_stream' => filter_var(env('OLLAMA_USE_STREAM', false), FILTER_VALIDATE_BOOLEAN),
         'ollama_chat_temperature' => (float) env('OLLAMA_CHAT_TEMPERATURE', 0.32),
         'ollama_chat_top_p' => (float) env('OLLAMA_CHAT_TOP_P', 0.68),
         'gemini_key' => env('GEMINI_API_KEY', ''),

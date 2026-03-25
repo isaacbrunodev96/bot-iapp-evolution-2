@@ -92,57 +92,60 @@ class AIService
                 ['role' => 'user', 'content' => trim($context['prompt'])],
             ];
         }
+        // Streaming via curl pode retornar vazio por parsing/latência. Default: no-stream (HTTP) para estabilidade.
+        $useStream = (bool) config('services.ai.ollama_use_stream', false);
+
         $temp = (float) config('services.ai.ollama_chat_temperature', 0.32);
         $topP = (float) config('services.ai.ollama_chat_top_p', 0.68);
-        $payload = [
-            'model' => $model,
-            'messages' => $messages,
-            'stream' => true,
-            'options' => [
-                'temperature' => max(0.0, min(1.0, $temp)),
-                'top_p' => max(0.0, min(1.0, $topP)),
-            ],
-        ];
         Log::info('Payload enviado ao Ollama:', ['messages' => $messages]);
         $url = rtrim($this->ollamaUrl, '/') . '/api/chat';
-        $payloadJson = json_encode($payload);
-        $tmpFile = tempnam(sys_get_temp_dir(), 'ollama_');
-        file_put_contents($tmpFile, $payloadJson);
-        $cmd = sprintf(
-            "curl -s -N -X POST %s -H 'Content-Type: application/json' -d @%s --max-time 180 2>&1",
-            escapeshellarg($url),
-            escapeshellarg($tmpFile)
-        );
-        $handle = popen($cmd, 'r');
-        register_shutdown_function(function () use ($tmpFile) { @unlink($tmpFile); });
-        if (!$handle) {
-            throw new \Exception('Não foi possível invocar Ollama (curl).');
-        }
-        $buffer = '';
         $responseText = '';
-        while (!feof($handle)) {
-            $buffer .= fread($handle, 8192);
-            while (($pos = strpos($buffer, "\n")) !== false) {
-                $line = trim(substr($buffer, 0, $pos));
-                $buffer = substr($buffer, $pos + 1);
-                if ($line === '') continue;
-                $data = json_decode($line, true);
-                if (is_array($data) && isset($data['error'])) {
-                    pclose($handle);
-                    throw new \Exception('Ollama: ' . ($data['error'] ?? 'erro desconhecido'));
-                }
-                if (is_array($data) && isset($data['message']['content'])) {
-                    $responseText .= $data['message']['content'];
-                }
-                if (is_array($data) && !empty($data['done'])) {
-                    break 2;
+        if ($useStream) {
+            $payload = [
+                'model' => $model,
+                'messages' => $messages,
+                'stream' => true,
+                'options' => [
+                    'temperature' => max(0.0, min(1.0, $temp)),
+                    'top_p' => max(0.0, min(1.0, $topP)),
+                ],
+            ];
+            $payloadJson = json_encode($payload);
+            $tmpFile = tempnam(sys_get_temp_dir(), 'ollama_');
+            file_put_contents($tmpFile, $payloadJson);
+            $cmd = sprintf(
+                "curl -s -N -X POST %s -H 'Content-Type: application/json' -d @%s --max-time 240 2>&1",
+                escapeshellarg($url),
+                escapeshellarg($tmpFile)
+            );
+            $handle = popen($cmd, 'r');
+            register_shutdown_function(function () use ($tmpFile) { @unlink($tmpFile); });
+            if (!$handle) {
+                throw new \Exception('Não foi possível invocar Ollama (curl).');
+            }
+            $buffer = '';
+            while (!feof($handle)) {
+                $buffer .= fread($handle, 8192);
+                while (($pos = strpos($buffer, "\n")) !== false) {
+                    $line = trim(substr($buffer, 0, $pos));
+                    $buffer = substr($buffer, $pos + 1);
+                    if ($line === '') continue;
+                    $data = json_decode($line, true);
+                    if (is_array($data) && isset($data['error'])) {
+                        pclose($handle);
+                        throw new \Exception('Ollama: ' . ($data['error'] ?? 'erro desconhecido'));
+                    }
+                    if (is_array($data) && isset($data['message']['content'])) {
+                        $responseText .= $data['message']['content'];
+                    }
+                    if (is_array($data) && !empty($data['done'])) {
+                        break 2;
+                    }
                 }
             }
-        }
-        pclose($handle);
-        $responseText = trim($responseText);
-        if ($responseText === '') {
-            Log::info('Ollama streaming retornou vazio, tentando sem streaming (fallback)');
+            pclose($handle);
+            $responseText = trim($responseText);
+        } else {
             $responseText = $this->generateWithOllamaNoStream($url, $model, $messages);
         }
         if ($responseText === '') {
