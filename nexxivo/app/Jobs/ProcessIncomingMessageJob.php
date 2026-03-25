@@ -184,20 +184,25 @@ class ProcessIncomingMessageJob implements ShouldQueue
             }
 
             if ($type === 'ai_response') {
-                $this->executeAiResponse($action, $evolution, $aiService, $elevenLabs, $conversationId);
+                $this->executeAiResponse($action, $evolution, $aiService, $elevenLabs, $conversationId, $flow);
                 continue;
             }
 
             if ($type === 'conditional') {
-                $this->executeConditional($action, $evolution, $aiService, $elevenLabs, $conversationId);
+                $this->executeConditional($action, $evolution, $aiService, $elevenLabs, $conversationId, $flow);
             }
         }
     }
 
-    private function executeAiResponse(array $action, EvolutionApiService $evolution, AIService $aiService, ElevenLabsService $elevenLabs, ?int $conversationId): void
-    {
-        $prompt = $action['prompt'] ?? 'Responda de forma útil e amigável: {message}';
-        $prompt = str_replace('{message}', $this->messageText, $prompt);
+    private function executeAiResponse(
+        array $action,
+        EvolutionApiService $evolution,
+        AIService $aiService,
+        ElevenLabsService $elevenLabs,
+        ?int $conversationId,
+        Flow $flow,
+    ): void {
+        $prompt = $this->composeAiPromptFromFlowAndAction($flow, $action);
         $provider = $action['provider'] ?? null;
         $model = $action['model'] ?? null;
         $useContext = isset($action['use_context']) ? ! empty($action['use_context']) : true;
@@ -264,7 +269,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
         }
     }
 
-    private function executeConditional(array $action, EvolutionApiService $evolution, AIService $aiService, ElevenLabsService $elevenLabs, ?int $conversationId): void
+    private function executeConditional(array $action, EvolutionApiService $evolution, AIService $aiService, ElevenLabsService $elevenLabs, ?int $conversationId, Flow $flow): void
     {
         $conditions = $action['conditions'] ?? [];
         $text = mb_strtolower($this->messageText);
@@ -291,7 +296,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
                         $evolution->sendText($this->instanceName, $this->contact, trim($sub['content']));
                     }
                     if (($sub['type'] ?? '') === 'ai_response') {
-                        $this->executeAiResponse($sub, $evolution, $aiService, $elevenLabs, $conversationId);
+                        $this->executeAiResponse($sub, $evolution, $aiService, $elevenLabs, $conversationId, $flow);
                     }
                 }
                 return;
@@ -305,9 +310,35 @@ class ProcessIncomingMessageJob implements ShouldQueue
                     $evolution->sendText($this->instanceName, $this->contact, trim($sub['content']));
                 }
                 if (($sub['type'] ?? '') === 'ai_response') {
-                    $this->executeAiResponse($sub, $evolution, $aiService, $elevenLabs, $conversationId);
+                    $this->executeAiResponse($sub, $evolution, $aiService, $elevenLabs, $conversationId, $flow);
                 }
             }
         }
+    }
+
+    /**
+     * Descrição do fluxo = persona/orientação INTERNA. Prompt da ação = tarefa curta (ex.: responder ao cliente).
+     * Se o utilizador colou o mesmo texto nos dois, não duplicar.
+     */
+    private function composeAiPromptFromFlowAndAction(Flow $flow, array $action): string
+    {
+        $desc = trim((string) ($flow->description ?? ''));
+        $rawAction = trim((string) ($action['prompt'] ?? ''));
+
+        if ($desc !== '' && $rawAction !== '' && $rawAction === $desc) {
+            $rawAction = '';
+        }
+
+        $task = $rawAction !== ''
+            ? str_replace(['{message}', '{user_message}'], $this->messageText, $rawAction)
+            : 'Responda à última mensagem do cliente no WhatsApp: seja natural, breve e humano; não liste regras nem explique o seu papel.';
+
+        if ($desc === '') {
+            return $task;
+        }
+
+        $header = "[Orientação interna — define persona, tom e limites. Isto NÃO é mensagem para o cliente: não copie, não cite, não enumere ao cliente.]\n";
+
+        return $header . $desc . "\n\n---\n\n[Tarefa]\n" . $task;
     }
 }

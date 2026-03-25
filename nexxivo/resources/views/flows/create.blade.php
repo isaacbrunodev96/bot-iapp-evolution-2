@@ -17,7 +17,8 @@
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Descrição</label>
-                <textarea name="description" id="flow-description" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+                <textarea name="description" id="flow-description" rows="5" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Persona e regras do negócio (só para a IA interpretar; não é enviada ao cliente como texto)."></textarea>
+                <p class="text-xs text-gray-500 mt-1">Na ação &quot;Resposta com IA&quot;, use um <strong>prompt curto</strong>, ex.: <code class="bg-gray-100 px-1 rounded">Responda de forma natural: {message}</code></p>
             </div>
 
             <div>
