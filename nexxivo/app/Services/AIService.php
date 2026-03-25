@@ -433,8 +433,11 @@ class AIService
             return $text;
         }
         $l = mb_strtolower($text);
+        // Normaliza whitespace (inclui NBSP) para o regex bater mesmo com formatação estranha.
+        $l = str_replace("\u{00A0}", ' ', $l);
+        $l = preg_replace('/\s+/u', ' ', $l);
         $scriptLike = (bool) preg_match(
-            '/persona|objetivos?\b|regras?\s+de\s+resposta|regras?\b|formato\s+da\s+resposta|formato\b|lógica|tom\s+desejado|assistente\s+comercial|call\s+to\s+action|seu\s+objetivo\s+é/ui',
+            '/assistente\s*comercial|seu\s*objetivo\s*é|regras?\s*de\s*resposta|formato\s*da\s+resposta|call\s*to\s+action|persona|objetivos?\b/ui',
             $l
         );
         if (! $scriptLike) {
