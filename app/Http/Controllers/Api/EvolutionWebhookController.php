@@ -10,6 +10,7 @@ use App\Models\Message;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class EvolutionWebhookController extends Controller
 {
@@ -377,34 +378,49 @@ class EvolutionWebhookController extends Controller
             ]
         );
 
-        if ($message->wasRecentlyCreated && ! $isOutgoing) {
-            if (config('services.evolution.dispatch_incoming_sync')) {
-                ProcessIncomingMessageJob::dispatchSync($instanceName, $contact, $remoteJid, $text, $message->id);
-                Log::info('Evolution mensagem recebida e processada em sync (sem fila)', [
-                    'instance' => $instanceName,
-                    'contact' => $contact,
-                    'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
-                ]);
-            } else {
-                ProcessIncomingMessageJob::dispatch($instanceName, $contact, $remoteJid, $text, $message->id);
-                Log::info('Evolution mensagem recebida e salva', [
-                    'instance' => $instanceName,
-                    'contact' => $contact,
-                    'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
-                ]);
-            }
-        } elseif ($message->wasRecentlyCreated && $isOutgoing) {
+        if ($message->wasRecentlyCreated && $isOutgoing) {
             Log::info('Evolution mensagem enviada gravada (fromMe)', [
                 'instance' => $instanceName,
                 'contact' => $contact,
                 'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
             ]);
-        } else {
-            Log::debug('Evolution mensagem já existente (duplicata), job não disparado', [
+            return;
+        }
+
+        if ($message->wasRecentlyCreated && ! $isOutgoing) {
+            Log::info('Evolution mensagem recebida e salva', [
                 'instance' => $instanceName,
-                'message_id' => $messageId,
-                'conversation_id' => $conversation->id,
+                'contact' => $contact,
+                'text_preview' => strlen($text) > 80 ? substr($text, 0, 80) . '...' : $text,
             ]);
+        }
+
+        // Disparar job de forma idempotente (Evolution pode reenviar o mesmo messages.upsert).
+        if (! $isOutgoing) {
+            $dedupeKey = "evo:incoming:{$instanceName}:{$messageId}";
+            $ttlSeconds = 180;
+            $first = Redis::set($dedupeKey, '1', 'EX', $ttlSeconds, 'NX');
+
+            if ($first) {
+                if (config('services.evolution.dispatch_incoming_sync')) {
+                    ProcessIncomingMessageJob::dispatchSync($instanceName, $contact, $remoteJid, $text, $message->id);
+                } else {
+                    ProcessIncomingMessageJob::dispatch($instanceName, $contact, $remoteJid, $text, $message->id);
+                }
+
+                Log::info('Evolution incoming job disparado', [
+                    'instance' => $instanceName,
+                    'contact' => $contact,
+                    'message_id' => $messageId,
+                    'dedupe_ttl' => $ttlSeconds,
+                ]);
+            } else {
+                Log::debug('Evolution incoming duplicado (dedupe), job não disparado', [
+                    'instance' => $instanceName,
+                    'message_id' => $messageId,
+                    'conversation_id' => $conversation->id,
+                ]);
+            }
         }
     }
 
